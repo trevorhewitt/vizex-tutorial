@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="utf-8"/>
+ <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+ <title>Drawing</title>
+ <link rel="stylesheet" href="assets/style.css"/>
+ <script src="assets/util.js" defer></script>
+ <style>
+   /* Scoped drawing-app styles (keeps global CSS intact) */
+   #appRoot {
+     display:flex;
+     flex-direction:column;
+     align-items:center;
+     gap:16px;
+     user-select:none;
+     -webkit-user-select:none;
+     -ms-user-select:none;
+     width:100%;
+     --ui-scale: 1.45;
+     --slider-track-h: 40px;
+     --slider-thumb-d: 30px;
+     --thumb-border: 4px solid #005197;
+   }
+
+   /* Viewport: make square, iPad-safe */
+   #appRoot #viewport{
+     /* Old Safari-friendly width rules */
+     width: 90vw;
+     max-width: 600px;
+     /* Modern override when supported */
+   }
+   @supports (width: min(10vw, 600px)) {
+     #appRoot #viewport{ width: min(90vw, 600px); }
+   }
+
+   /* If aspect-ratio supported, use it. Else, use padding-top square fallback */
+   #appRoot #viewport{
+     position: relative;
+     overflow: hidden;
+     border: 2px solid green;
+     touch-action: none;
+     margin-bottom: calc(20px * var(--ui-scale));
+     display: flex;
+     align-items: center;
+     justify-content: center;
+     background: #f0f0f0;
+   }
+   @supports (aspect-ratio: 1 / 1) {
+     #appRoot #viewport{ aspect-ratio: 1 / 1; height:auto; }
+   }
+   @supports not (aspect-ratio: 1 / 1) {
+     /* Classic intrinsic square: height comes from padding */
+     #appRoot #viewport{
+       height: 0;
+       padding-top: 100%;
+     }
+   }
+
+   #appRoot canvas{
+     position:absolute;
+     inset:0;
+     width:100%;
+     height:100%;
+     cursor:crosshair;
+     touch-action:none;
+     user-select:none;
+     transition: filter 120ms ease;
+   }
+
+   #appRoot .controls {
+     margin: 0 auto;
+     width: 90vw;
+     max-width: 600px;
+     display: flex;
+     flex-direction: column;
+     gap: 12px;
+     text-transform: lowercase;
+   }
+   @supports (width: min(10vw, 600px)) {
+     #appRoot .controls{ width: min(90vw, 600px); }
+   }
+
+   #appRoot .row{ display:flex; align-items:center; }
+   #appRoot .space-between{ justify-content:space-between; }
+   #appRoot .row.space-between{ align-items:end; }
+
+   #appRoot .slider-group{
+     flex:1; display:grid; grid-template-rows:auto var(--slider-track-h); align-items:end;
+   }
+   #appRoot .slider-group .label-text{ font-size:14px; margin-bottom:4px; justify-self:center; text-align:center; text-transform:lowercase; }
+   #appRoot .slider-group input[type="range"]{ align-self:end; width:100%; }
+
+   #appRoot .divider, #appRoot .col-divider{ pointer-events:none; background:#ccc; }
+   #appRoot .divider{ width:1px; height:24px; margin:0 8px; }
+   #appRoot .col-divider{ width:1px; margin:0 12px; }
+
+   #appRoot .tool-row, #appRoot .actions{ display:flex; align-items:center; gap:8px; text-transform:lowercase; }
+   #appRoot .tool-row button, #appRoot .actions button{
+     flex:1; padding:8px; font-size:14px; background:#fff; border:1px solid #ccc; border-radius:10px;
+   }
+   #appRoot .tool-row button.selected, #appRoot .tool-row button.active{ background:#ddd; border-color:#888; }
+
+   #appRoot #swapColors{
+     align-self:end; height:var(--slider-track-h); min-height:0; width:50px; padding:0; border-radius:0; background:#fff; border:1px solid #ccc; color:inherit;
+   }
+   #appRoot #flipH{ background:#fff; border:1px solid #ccc; }
+
+   /* Slider chrome */
+   #appRoot input[type="range"]{ -webkit-appearance:none; appearance:none; width:100%; height:var(--slider-track-h); background:none; }
+   #appRoot input[type="range"]::-webkit-slider-runnable-track{ height:var(--slider-track-h); background-size:100% 100%; background-repeat:no-repeat; background-position:center; }
+   #appRoot input[type="range"]::-webkit-slider-thumb{
+     -webkit-appearance:none; appearance:none; width:var(--slider-thumb-d); height:var(--slider-thumb-d);
+     margin-top:calc((var(--slider-track-h) - var(--slider-thumb-d))/2); border:var(--thumb-border); border-radius:50%;
+     background:transparent; box-shadow:0 0 2px #888;
+   }
+   #appRoot input[type="range"]::-moz-range-track{ height:var(--slider-track-h); background-size:100% 100%; background-repeat:no-repeat; background-position:center; }
+   #appRoot input[type="range"]::-moz-range-thumb{
+     width:var(--slider-thumb-d); height:var(--slider-thumb-d); border:var(--thumb-border); border-radius:50%; background:transparent; box-shadow:0 0 2px #888;
+   }
+   #appRoot input[type="range"]::-moz-range-progress{ background-color:transparent; }
+   #appRoot input[type="range"]::-ms-track{ height:var(--slider-track-h); background:transparent; border-color:transparent; color:transparent; }
+   #appRoot input[type="range"]::-ms-thumb{
+     width:var(--slider-thumb-d); height:var(--slider-thumb-d); border:var(--thumb-border); border-radius:50%; background:transparent; box-shadow:0 0 2px #888;
+   }
+
+  /* Slider track images (scoped) */
+  #appRoot #background::-webkit-slider-runnable-track{ background:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/colour_zes2mh.png') no-repeat center/cover; }
+  #appRoot #brushColor::-webkit-slider-runnable-track{ background:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/brightness_clear_z6urk1.png') no-repeat center/cover; }
+  #appRoot #occludeCenter::-webkit-slider-runnable-track{ background:url('https://res-console.cloudinary.com/dlginribm/thumbnails/v1/image/upload/v1756743258/Y2VudHJlX2NsZWFyX3lzc3g5aw==/as_is') no-repeat center/cover; }
+  #appRoot #occludeEdge::-webkit-slider-runnable-track{ background:url('https://res-console.cloudinary.com/dlginribm/thumbnails/v1/image/upload/v1756743258/ZWRnZV9jbGVhcl9qYnVkd2Y=/as_is') no-repeat center/cover; }
+  #appRoot #blur::-webkit-slider-runnable-track{ background:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/blur_clear_v2_j4ntub.png') no-repeat center/cover; }
+  #appRoot #thickness::-webkit-slider-runnable-track{ background:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/thickness_clear_kzsa5m.png') no-repeat center/cover; }
+  
+  #appRoot #background::-moz-range-track{ background:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/colour_zes2mh.png') no-repeat center/cover; }
+  #appRoot #brushColor::-moz-range-track{ background:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/brightness_clear_z6urk1.png') no-repeat center/cover; }
+  #appRoot #occludeCenter::-moz-range-track{ background:url('https://res-console.cloudinary.com/dlginribm/thumbnails/v1/image/upload/v1756743258/Y2VudHJlX2NsZWFyX3lzc3g5aw==/as_is') no-repeat center/cover; }
+  #appRoot #occludeEdge::-moz-range-track{ background:url('https://res-console.cloudinary.com/dlginribm/thumbnails/v1/image/upload/v1756743258/ZWRnZV9jbGVhcl9qYnVkd2Y=/as_is') no-repeat center/cover; }
+  #appRoot #blur::-moz-range-track{ background:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/blur_clear_v2_j4ntub.png') no-repeat center/cover; }
+  #appRoot #thickness::-moz-range-track{ background:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/thickness_clear_kzsa5m.png') no-repeat center/cover; }
+
+ </style>
+</head>
+
+<body data-page="drawing">
+ <div class="page">
+   <div class="content">
+     <div class="inner" id="root">
+       <div id="appRoot">
+         <div id="viewport">
+           <!-- Lower internal resolution for speed; CSS scales up -->
+           <canvas id="drawingCanvas" width="768" height="768"></canvas>
+         </div>
+
+         <div class="controls">
+           <div class="row space-between">
+             <div class="slider-group">
+               <span class="label-text">background colour</span>
+               <input type="range" id="background" min="0" max="255" value="255"/>
+             </div>
+             <div class="divider"></div>
+             <button id="swapColors">swap colours</button>
+             <div class="divider"></div>
+             <div class="slider-group">
+               <span class="label-text">brush colour</span>
+               <input type="range" id="brushColor" min="0" max="255" value="0"/>
+             </div>
+           </div>
+
+           <div class="row">
+             <div style="flex:1; display:flex; flex-direction:column; gap:12px;">
+               <div class="slider-group" style="display:none;">
+                 <span class="label-text">center fade</span>
+                 <input type="range" id="occlfudeCenter" min="-1" max="1" step="0.01" value="0"/>
+               </div>
+               <div class="slider-group">
+                 <span class="label-text">brush softness</span>
+                 <input type="range" id="blur" min="0" max="10" step="0.1" value="0"/>
+               </div>
+             </div>
+
+             <div class="col-divider"></div>
+
+             <div style="flex:1; display:flex; flex-direction:column; gap:12px;">
+               <div class="slider-group" style="display:none;">
+                 <span class="label-text">edge fade</span>
+                 <input type="range" id="occludeEdge" min="-1" max="1" step="0.01" value="0"/>
+               </div>
+               <div class="slider-group">
+                 <span class="label-text">brush size</span>
+                 <input type="range" id="thickness" min="1" max="20" value="10"/>
+               </div>
+             </div>
+           </div>
+
+           <div class="tool-row">
+             <button data-tool="draw" class="selected">draw</button>
+             <button data-tool="erase">erase</button>
+             <div class="divider"></div>
+             <button data-tool="move">move</button>
+             <div class="divider"></div>
+             <button id="flipH">flip</button>
+           </div>
+
+           <div class="actions">
+             <button id="undo">undo</button>
+             <button id="redo">redo</button>
+             <button id="clear">clear</button>
+             <div class="divider"></div>
+             <button id="saveButton">finish3</button>
+           </div>
+           <hr/>
+         </div>
+       </div>
+     </div>
+   </div>
+
+   <div class="footer">
+     <div class="button-bar">
+       <button id="backBtn" class="secondary">Back</button>
+       <button id="nextBtn" class="primary">Next</button>
+     </div>
+   </div>
+ </div>
+
+ <script src="script.js"></script>
+ <script>
+   document.addEventListener("DOMContentLoaded", () => {
+     const params = (window.VE && VE.parseParams) ? VE.parseParams() : {};
+     const dev = (window.VE && VE.hasDev) ? VE.hasDev(params) : false;
+
+     const back = document.getElementById("backBtn");
+     const next = document.getElementById("nextBtn");
+     if (back) back.style.display = dev ? "" : "none";
+     if (next) next.style.display = dev ? "" : "none";
+
+     if (back && window.VE && VE.backRoute) {
+       back.addEventListener("click", () => {
+         const r = VE.backRoute("drawing", params);
+         VE.goto(r.page, r.params);
+       });
+     }
+     if (next && window.VE && VE.nextRoute) {
+       next.addEventListener("click", () => {
+         const r = VE.nextRoute("drawing", params);
+         VE.goto(r.page, r.params);
+       });
+     }
+
+     if (window.VE && VE.renderDevFooter) {
+       VE.renderDevFooter(params, dev ? "drawing (dev)" : "");
+     }
+   });
+ </script>
+</body>
+</html>
