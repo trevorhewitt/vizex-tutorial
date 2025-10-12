@@ -59,6 +59,11 @@
   function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
   function gray(v){ v = clamp(v|0, 0, 255); return 'rgb(' + v + ',' + v + ',' + v + ')'; }
 
+  function updateUnderlay(){
+    var vp = document.getElementById('viewport');
+    if (vp) vp.style.background = gray(state.background); // matches canvas bg
+  }
+
   // 2D affine matrix utilities (model -> canvas pixels): [a,b,c,d,e,f]
   // x' = a*x + c*y + e;  y' = b*x + d*y + f
   function mIdentity(){ return [1,0,0,1,0,0]; }
@@ -133,6 +138,7 @@
 
     reflectToolButtons();
     applyCanvasFilter();
+    updateUnderlay();
     redraw();
 
     histIndex = i;
@@ -157,7 +163,9 @@
     ctx.clearRect(0,0,w,h);
 
     ctx.fillStyle = gray(state.background);
-    ctx.fillRect(0,0,w,h);
+    // overfill by 2*blur pixels (safe even if blur=0)
+    var pad = Math.max(0, (state.blur|0) * 2);
+    ctx.fillRect(-pad, -pad, w + 2*pad, h + 2*pad);
 
     const V = (state.view && state.view.length === 6) ? state.view : mIdentity();
     ctx.setTransform(V[0], V[1], V[2], V[3], V[4], V[5]);
@@ -237,6 +245,7 @@
     $('#brushColor').value = state.brushColor;
     $('#background').value = state.background;
     // No path mutation — redraw updates colors
+    updateUnderlay(); 
     saveHistory();
     redraw();
   });
@@ -264,6 +273,7 @@
       $('#background').value = v;
     }
     state.background = v;
+    updateUnderlay();  // keep viewport underlay in sync
     redraw();
   });
   $('#background').addEventListener('change', ()=>{ saveHistory(); });
@@ -409,6 +419,7 @@
   /* Init */
   reflectToolButtons();
   applyCanvasFilter();
+  updateUnderlay();
   saveHistory();
   redraw();
   enforceSquare(); // final guard on first paint
