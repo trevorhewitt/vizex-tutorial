@@ -99,49 +99,55 @@
 
   function redraw(){
     const w = canvas.width, h = canvas.height;
-    ctx.setTransform(1,0,0,1,0,0);
-    ctx.clearRect(0,0,w,h);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, w, h);
 
+    // Fill with current background color
     ctx.fillStyle = gray(state.background);
-    ctx.fillRect(0,0,w,h);
+    ctx.fillRect(0, 0, w, h);
 
     ctx.save();
     if (state.flipX) {
-      ctx.translate(w/2, 0);
-      ctx.scale(-1, 1);
-      ctx.translate(-w/2, 0);
+        ctx.translate(w / 2, 0);
+        ctx.scale(-1, 1);
+        ctx.translate(-w / 2, 0);
     }
     ctx.translate(state.offsetX, state.offsetY);
 
-    for (let p of state.paths){
-      drawPath(ctx, p, state.thickness);
+    // Draw stored paths with live procedural colors
+    for (let p of state.paths) {
+        drawPath(ctx, p, state.thickness);
     }
-    if (drawing && currentPath.length > 1 && state.tool !== 'erase'){
-      drawPath(ctx, {erase:false, color: state.brushColor, points: currentPath}, state.thickness);
+
+    // Preview current path
+    if (drawing && currentPath.length > 1) {
+        drawPath(ctx, { erase: (state.tool === 'erase'), points: currentPath }, state.thickness);
     }
-    if (drawing && currentPath.length > 1 && state.tool === 'erase'){
-      ctx.save();
-      ctx.globalCompositeOperation = 'destination-out';
-      drawPath(ctx, {erase:true, color:0, points: currentPath}, state.thickness);
-      ctx.restore();
-    }
+
     ctx.restore();
-  }
+    }
+
+
   function drawPath(c, obj, thickness){
     const pts = obj.points;
     if (!pts || pts.length < 2) return;
-    if (!obj.erase){
-      c.globalCompositeOperation = 'source-over';
-      c.strokeStyle = gray(obj.color != null ? obj.color : state.brushColor);
-    }
+
+    // Always draw with live procedural color
+    c.globalCompositeOperation = 'source-over';
+    c.strokeStyle = obj.erase ? gray(state.background) : gray(state.brushColor);
+
     c.lineWidth = thickness;
     c.lineCap = 'round';
     c.lineJoin = 'round';
+
     c.beginPath();
     c.moveTo(pts[0].x, pts[0].y);
-    for (let i=1;i<pts.length;i++){ c.lineTo(pts[i].x, pts[i].y); }
+    for (let i = 1; i < pts.length; i++) {
+        c.lineTo(pts[i].x, pts[i].y);
+    }
     c.stroke();
-  }
+    }
+
 
   function applyCanvasFilter(){
     const px = +state.blur || 0;
@@ -182,9 +188,9 @@
     const tmp = state.brushColor;
     state.brushColor = state.background;
     state.background = tmp;
-    state.paths.forEach(p=>{ if(!p.erase) p.color = state.brushColor; });
     $('#brushColor').value = state.brushColor;
     $('#background').value = state.background;
+    // No path mutation — redraw updates colors
     saveHistory();
     redraw();
   });
@@ -193,12 +199,12 @@
     let v = +$('#brushColor').value;
     const bg = +$('#background').value;
     if (Math.abs(v - bg) < MIN_COLOR_DISTANCE){
-      v = v > bg ? bg + MIN_COLOR_DISTANCE : bg - MIN_COLOR_DISTANCE;
-      v = clamp(v, 0, 255);
-      $('#brushColor').value = v;
+        v = v > bg ? bg + MIN_COLOR_DISTANCE : bg - MIN_COLOR_DISTANCE;
+        v = clamp(v, 0, 255);
+        $('#brushColor').value = v;
     }
     state.brushColor = v;
-    state.paths.forEach(p=>{ if(!p.erase) p.color = state.brushColor; });
+    // Do not mutate stored paths — color updates procedurally
     redraw();
   });
   $('#brushColor').addEventListener('change', ()=>{ saveHistory(); });
@@ -263,7 +269,7 @@
   window.addEventListener('mouseup', ()=>{
     if (state.tool === 'move' && moveDragging){ moveDragging = false; saveHistory(); return; }
     if (!drawing) return;
-    state.paths.push({ erase: state.tool === 'erase', color: state.brushColor, points: currentPath.slice() });
+    state.paths.push({ erase: (state.tool === 'erase'), points: currentPath.slice() });
     drawing = false; currentPath = []; saveHistory(); redraw();
   });
 
@@ -295,7 +301,7 @@
   window.addEventListener('touchend', (e)=>{
     if (state.tool === 'move' && moveDragging){ moveDragging = false; saveHistory(); return; }
     if (!drawing) return;
-    state.paths.push({ erase: state.tool === 'erase', color: state.brushColor, points: currentPath.slice() });
+    state.paths.push({ erase: (state.tool === 'erase'), points: currentPath.slice() });
     drawing = false; currentPath = []; saveHistory(); redraw();
   });
 
