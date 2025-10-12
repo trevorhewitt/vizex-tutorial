@@ -46,27 +46,34 @@
   let histIndex = -1;
 
   function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
-  function gray(v){ v = clamp(v|0,0,255); return `rgb(${v},${v},${v})`; }
+  function gray(v){ v = clamp(v|0, 0, 255); return 'rgb(' + v + ',' + v + ',' + v + ')'; }
+
 
   function saveHistory(){
     const snap = {
-      tool: state.tool,
-      brushColor: state.brushColor,
-      background: state.background,
-      thickness: state.thickness,
-      blur: state.blur,
-      flipX: state.flipX,
-      offsetX: state.offsetX,
-      offsetY: state.offsetY,
-      paths: state.paths.map(p => ({ erase: p.erase, color: p.color, points: p.points.map(q => ({x:q.x, y:q.y})) }))
+        tool: state.tool,
+        brushColor: state.brushColor,
+        background: state.background,
+        thickness: state.thickness,
+        blur: state.blur,
+        flipX: state.flipX,
+        offsetX: state.offsetX,
+        offsetY: state.offsetY,
+        // store only the needed bits; use isErase
+        paths: state.paths.map(p => ({
+        isErase: !!p.isErase, // future-proof + explicit boolean
+        points: p.points.map(q => ({ x: q.x, y: q.y }))
+        }))
     };
-    history.splice(histIndex+1);
+    history.splice(histIndex + 1);
     history.push(snap);
     histIndex = history.length - 1;
     updateUndoRedo();
   }
+
   function loadHistory(i){
-    const h = history[i]; if(!h) return;
+    const h = history[i]; if (!h) return;
+
     state.tool = h.tool;
     state.brushColor = h.brushColor;
     state.background = h.background;
@@ -75,17 +82,26 @@
     state.flipX = h.flipX;
     state.offsetX = h.offsetX;
     state.offsetY = h.offsetY;
-    state.paths = h.paths.map(p => ({ erase: p.erase, color: p.color, points: p.points.map(q => ({x:q.x, y:q.y})) }));
+
+    // accept either isErase (new) or erase (legacy) from history
+    state.paths = (h.paths || []).map(p => ({
+        isErase: !!(p.isErase !== undefined ? p.isErase : p.erase),
+        points: (p.points || []).map(q => ({ x: q.x, y: q.y }))
+    }));
+
     $('#brushColor').value = state.brushColor;
     $('#background').value = state.background;
     $('#thickness').value = state.thickness;
     $('#blur').value = state.blur;
+
     reflectToolButtons();
     applyCanvasFilter();
     redraw();
+
     histIndex = i;
     updateUndoRedo();
   }
+
   function updateUndoRedo(){
     $('#undo').disabled = histIndex <= 0;
     $('#redo').disabled = histIndex >= history.length - 1;
@@ -102,7 +118,6 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    // Fill with current background color
     ctx.fillStyle = gray(state.background);
     ctx.fillRect(0, 0, w, h);
 
@@ -114,28 +129,25 @@
     }
     ctx.translate(state.offsetX, state.offsetY);
 
-    // Draw stored paths with live procedural colors
-    for (let p of state.paths) {
+    for (let p of state.paths){
         drawPath(ctx, p, state.thickness);
     }
 
-    // Preview current path
-    if (drawing && currentPath.length > 1) {
-        drawPath(ctx, { erase: (state.tool === 'erase'), points: currentPath }, state.thickness);
+    if (drawing && currentPath.length > 1){
+        drawPath(ctx, { isErase: (state.tool === 'erase'), points: currentPath }, state.thickness);
     }
 
     ctx.restore();
-    }
+  }
+
 
 
   function drawPath(c, obj, thickness){
     const pts = obj.points;
     if (!pts || pts.length < 2) return;
 
-    // Always draw with live procedural color
     c.globalCompositeOperation = 'source-over';
-    c.strokeStyle = obj.erase ? gray(state.background) : gray(state.brushColor);
-
+    c.strokeStyle = obj.isErase ? gray(state.background) : gray(state.brushColor);
     c.lineWidth = thickness;
     c.lineCap = 'round';
     c.lineJoin = 'round';
@@ -146,7 +158,8 @@
         c.lineTo(pts[i].x, pts[i].y);
     }
     c.stroke();
-    }
+  }
+
 
 
   function applyCanvasFilter(){
@@ -269,7 +282,7 @@
   window.addEventListener('mouseup', ()=>{
     if (state.tool === 'move' && moveDragging){ moveDragging = false; saveHistory(); return; }
     if (!drawing) return;
-    state.paths.push({ erase: (state.tool === 'erase'), points: currentPath.slice() });
+    state.paths.push({ isErase: (state.tool === 'erase'), points: currentPath.slice() });
     drawing = false; currentPath = []; saveHistory(); redraw();
   });
 
@@ -301,7 +314,7 @@
   window.addEventListener('touchend', (e)=>{
     if (state.tool === 'move' && moveDragging){ moveDragging = false; saveHistory(); return; }
     if (!drawing) return;
-    state.paths.push({ erase: (state.tool === 'erase'), points: currentPath.slice() });
+    state.paths.push({ isErase: (state.tool === 'erase'), points: currentPath.slice() });
     drawing = false; currentPath = []; saveHistory(); redraw();
   });
 
