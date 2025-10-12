@@ -31,8 +31,9 @@
     thickness: clamp(+$('#thickness').value, 1, 20),
     blur: +$('#blur').value,
     flipX: false,
-    offsetX: 0,
-    offsetY: 0,
+    view: mIdentity(),   // <- critical default
+    offsetX: 0,          // legacy (kept for history compatibility)
+    offsetY: 0,          // legacy (kept for history compatibility)
     paths: []
   };
 
@@ -74,6 +75,7 @@
   function mRotate(theta){ var c=Math.cos(theta), s=Math.sin(theta); return [c,s,-s,c,0,0]; }
   function mApply(M,x,y){ return { x:M[0]*x + M[2]*y + M[4], y:M[1]*x + M[3]*y + M[5] }; }
   function mInvert(M){
+    M = M && M.length === 6 ? M : mIdentity();
     var a=M[0], b=M[1], c=M[2], d=M[3], e=M[4], f=M[5];
     var det = a*d - b*c; if (!det) return mIdentity();
     var invDet = 1/det;
@@ -84,7 +86,6 @@
   // Flip about canvas center (pixel space)
   function mFlipXAbout(cx, cy){ return mMultiply(mTranslate(cx,cy), mMultiply([-1,0,0,1,0,0], mTranslate(-cx,-cy))); }
 
-
   function saveHistory(){
     const snap = {
       tool: state.tool,
@@ -93,9 +94,7 @@
       thickness: state.thickness,
       blur: state.blur,
       flipX: state.flipX,
-      // persist view matrix
-      view: state.view.slice(0),
-      // keep paths minimal
+      view: (state.view && state.view.length === 6) ? state.view.slice(0) : mIdentity(),
       paths: state.paths.map(p => ({
         isErase: !!p.isErase,
         points: p.points.map(q => ({ x: q.x, y: q.y }))
@@ -152,26 +151,25 @@
     $('#flipH').classList.toggle('active', state.flipX);
   }
 
-  function redraw(){
+ function redraw(){
     const w = canvas.width, h = canvas.height;
     ctx.setTransform(1,0,0,1,0,0);
     ctx.clearRect(0,0,w,h);
 
-    // fill background (untransformed)
     ctx.fillStyle = gray(state.background);
     ctx.fillRect(0,0,w,h);
 
-    // apply current view for strokes
-    ctx.setTransform(state.view[0], state.view[1], state.view[2], state.view[3], state.view[4], state.view[5]);
+    const V = (state.view && state.view.length === 6) ? state.view : mIdentity();
+    ctx.setTransform(V[0], V[1], V[2], V[3], V[4], V[5]);
 
     for (let p of state.paths){
       drawPath(ctx, p, state.thickness);
     }
-
     if (drawing && currentPath.length > 1){
       drawPath(ctx, { isErase: (state.tool === 'erase'), points: currentPath }, state.thickness);
     }
   }
+
 
 
 
@@ -212,8 +210,8 @@
     const sy = canvas.height / rect.height;
     const px = (xCss - rect.left) * sx;
     const py = (yCss - rect.top) * sy;
-    const inv = mInvert(state.view);
-    return mApply(inv, px, py); // return model coords
+    const inv = mInvert(state.view || mIdentity());
+    return mApply(inv, px, py);
   }
 
 
@@ -322,16 +320,16 @@
     drawing = false; currentPath = []; saveHistory(); redraw();
   });
 
-  /* Touch with 2-finger pan/zoom/rotate */
+  /* Touch with 2-finger pan/zoom/rotate ONLY in Move tool */
   canvas.addEventListener('touchstart', (e)=>{
     if (!e.changedTouches || e.touches.length === 0) return;
 
-    // Start gesture if 2+ touches: overrides drawing
-    if (e.touches.length >= 2){
+    // Start gesture only if tool === 'move' and 2+ touches
+    if (state.tool === 'move' && e.touches.length >= 2){
       const a = clientToCanvasPx(e.touches[0].clientX, e.touches[0].clientY);
       const b = clientToCanvasPx(e.touches[1].clientX, e.touches[1].clientY);
       gesture.active = true;
-      gesture.view0 = state.view.slice(0);
+      gesture.view0 = (state.view && state.view.length === 6) ? state.view.slice(0) : mIdentity();
       gesture.p0a = a;
       gesture.p0b = b;
       gesture.c0 = { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
@@ -341,11 +339,12 @@
       return;
     }
 
-    // Single-finger: move tool pans on drag; otherwise draw
+    // Single-finger: if move tool => start pan via mouse-style drag; else draw/erase
     const t = e.changedTouches[0];
     if (state.tool === 'move'){
       moveDragging = true; lastMove = {x:t.clientX, y:t.clientY}; temporarilyDisableBlur(); e.preventDefault(); return;
     }
+    // draw/erase
     const pt = cssToCanvas(t.clientX, t.clientY);
     drawing = true; currentPath = [pt]; temporarilyDisableBlur(); redraw(); e.preventDefault();
   }, {passive:false});
@@ -353,23 +352,21 @@
   window.addEventListener('touchmove', (e)=>{
     if (!e.touches || e.touches.length === 0) return;
 
-    // Ongoing gesture
-    if (gesture.active && e.touches.length >= 2){
+    // Ongoing gesture only if move tool and 2+ touches
+    if (state.tool === 'move' && gesture.active && e.touches.length >= 2){
       const a1 = clientToCanvasPx(e.touches[0].clientX, e.touches[0].clientY);
       const b1 = clientToCanvasPx(e.touches[1].clientX, e.touches[1].clientY);
       const c1 = { x:(a1.x+b1.x)/2, y:(a1.y+b1.y)/2 };
 
-      // Build similarity transform G mapping initial pair -> current pair in pixel space
       const v0x = gesture.p0b.x - gesture.p0a.x, v0y = gesture.p0b.y - gesture.p0a.y;
       const v1x = b1.x - a1.x,            v1y = b1.y - a1.y;
       const len0 = Math.max(1e-6, Math.hypot(v0x, v0y));
       const len1 = Math.max(1e-6, Math.hypot(v1x, v1y));
-      const s = clamp(len1 / len0, 0.2, 8); // guard rails
+      const s = clamp(len1 / len0, 0.2, 8);
       const ang0 = Math.atan2(v0y, v0x);
       const ang1 = Math.atan2(v1y, v1x);
       const dtheta = ang1 - ang0;
 
-      // G = T(c1) * R(dtheta) * S(s) * T(-c0)
       let G = mTranslate(c1.x, c1.y);
       G = mMultiply(G, mRotate(dtheta));
       G = mMultiply(G, mScale(s));
@@ -380,7 +377,7 @@
       return;
     }
 
-    // Single-finger: move or draw
+    // Single-finger: move tool => pan; draw/erase otherwise
     const t = e.changedTouches[0];
     if (state.tool === 'move' && moveDragging){
       const dx = t.clientX - lastMove.x, dy = t.clientY - lastMove.y;
@@ -397,8 +394,8 @@
   }, {passive:false});
 
   window.addEventListener('touchend', (e)=>{
-    // End gesture if fewer than 2 touches remain
-    if (gesture.active && e.touches.length < 2){
+    // End gesture if fewer than 2 touches remain (only matters in Move tool)
+    if (state.tool === 'move' && gesture.active && e.touches.length < 2){
       gesture.active = false;
       saveHistory();
       return;
