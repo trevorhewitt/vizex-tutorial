@@ -42,28 +42,64 @@
   let lastMove = {x:0, y:0};
   let blurRestoreTimer = null;
 
+  let gesture = { active:false, view0:null, p0a:null, p0b:null, c0:null };
+  
+  function clientToCanvasPx(clientX, clientY){
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left) * (canvas.width / rect.width),
+      y: (clientY - rect.top)  * (canvas.height / rect.height)
+    };
+  }
+
   const history = [];
   let histIndex = -1;
 
   function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
   function gray(v){ v = clamp(v|0, 0, 255); return 'rgb(' + v + ',' + v + ',' + v + ')'; }
 
+  // 2D affine matrix utilities (model -> canvas pixels): [a,b,c,d,e,f]
+  // x' = a*x + c*y + e;  y' = b*x + d*y + f
+  function mIdentity(){ return [1,0,0,1,0,0]; }
+  function mMultiply(A,B){
+    return [
+      A[0]*B[0] + A[2]*B[1],  A[1]*B[0] + A[3]*B[1],
+      A[0]*B[2] + A[2]*B[3],  A[1]*B[2] + A[3]*B[3],
+      A[0]*B[4] + A[2]*B[5] + A[4],
+      A[1]*B[4] + A[3]*B[5] + A[5]
+    ];
+  }
+  function mTranslate(tx,ty){ return [1,0,0,1,tx,ty]; }
+  function mScale(s){ return [s,0,0,s,0,0]; }
+  function mRotate(theta){ var c=Math.cos(theta), s=Math.sin(theta); return [c,s,-s,c,0,0]; }
+  function mApply(M,x,y){ return { x:M[0]*x + M[2]*y + M[4], y:M[1]*x + M[3]*y + M[5] }; }
+  function mInvert(M){
+    var a=M[0], b=M[1], c=M[2], d=M[3], e=M[4], f=M[5];
+    var det = a*d - b*c; if (!det) return mIdentity();
+    var invDet = 1/det;
+    var na =  d*invDet, nb = -b*invDet, nc = -c*invDet, nd = a*invDet;
+    var ne = -(na*e + nc*f), nf = -(nb*e + nd*f);
+    return [na,nb,nc,nd,ne,nf];
+  }
+  // Flip about canvas center (pixel space)
+  function mFlipXAbout(cx, cy){ return mMultiply(mTranslate(cx,cy), mMultiply([-1,0,0,1,0,0], mTranslate(-cx,-cy))); }
+
 
   function saveHistory(){
     const snap = {
-        tool: state.tool,
-        brushColor: state.brushColor,
-        background: state.background,
-        thickness: state.thickness,
-        blur: state.blur,
-        flipX: state.flipX,
-        offsetX: state.offsetX,
-        offsetY: state.offsetY,
-        // store only the needed bits; use isErase
-        paths: state.paths.map(p => ({
-        isErase: !!p.isErase, // future-proof + explicit boolean
+      tool: state.tool,
+      brushColor: state.brushColor,
+      background: state.background,
+      thickness: state.thickness,
+      blur: state.blur,
+      flipX: state.flipX,
+      // persist view matrix
+      view: state.view.slice(0),
+      // keep paths minimal
+      paths: state.paths.map(p => ({
+        isErase: !!p.isErase,
         points: p.points.map(q => ({ x: q.x, y: q.y }))
-        }))
+      }))
     };
     history.splice(histIndex + 1);
     history.push(snap);
@@ -71,22 +107,24 @@
     updateUndoRedo();
   }
 
+
   function loadHistory(i){
-    const h = history[i]; if (!h) return;
+    const h = history[i]; if(!h) return;
 
     state.tool = h.tool;
     state.brushColor = h.brushColor;
     state.background = h.background;
     state.thickness = h.thickness;
     state.blur = h.blur;
-    state.flipX = h.flipX;
-    state.offsetX = h.offsetX;
-    state.offsetY = h.offsetY;
+    state.flipX = !!h.flipX;
 
-    // accept either isErase (new) or erase (legacy) from history
+    // view matrix (fallback to identity if missing in very old snapshots)
+    state.view = (h.view && h.view.length === 6) ? h.view.slice(0) : mIdentity();
+
+    // accept both isErase (new) and erase (legacy)
     state.paths = (h.paths || []).map(p => ({
-        isErase: !!(p.isErase !== undefined ? p.isErase : p.erase),
-        points: (p.points || []).map(q => ({ x: q.x, y: q.y }))
+      isErase: !!(p.isErase !== undefined ? p.isErase : p.erase),
+      points: (p.points || []).map(q => ({ x:q.x, y:q.y }))
     }));
 
     $('#brushColor').value = state.brushColor;
@@ -102,6 +140,7 @@
     updateUndoRedo();
   }
 
+
   function updateUndoRedo(){
     $('#undo').disabled = histIndex <= 0;
     $('#redo').disabled = histIndex >= history.length - 1;
@@ -115,30 +154,25 @@
 
   function redraw(){
     const w = canvas.width, h = canvas.height;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, w, h);
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,w,h);
 
+    // fill background (untransformed)
     ctx.fillStyle = gray(state.background);
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(0,0,w,h);
 
-    ctx.save();
-    if (state.flipX) {
-        ctx.translate(w / 2, 0);
-        ctx.scale(-1, 1);
-        ctx.translate(-w / 2, 0);
-    }
-    ctx.translate(state.offsetX, state.offsetY);
+    // apply current view for strokes
+    ctx.setTransform(state.view[0], state.view[1], state.view[2], state.view[3], state.view[4], state.view[5]);
 
     for (let p of state.paths){
-        drawPath(ctx, p, state.thickness);
+      drawPath(ctx, p, state.thickness);
     }
 
     if (drawing && currentPath.length > 1){
-        drawPath(ctx, { isErase: (state.tool === 'erase'), points: currentPath }, state.thickness);
+      drawPath(ctx, { isErase: (state.tool === 'erase'), points: currentPath }, state.thickness);
     }
-
-    ctx.restore();
   }
+
 
 
 
@@ -174,15 +208,14 @@
 
   function cssToCanvas(xCss, yCss){
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    let x = (xCss - rect.left) * scaleX;
-    let y = (yCss - rect.top) * scaleY;
-    if (state.flipX){ x = canvas.width - x; }
-    x -= state.offsetX;
-    y -= state.offsetY;
-    return {x, y};
+    const sx = canvas.width / rect.width;
+    const sy = canvas.height / rect.height;
+    const px = (xCss - rect.left) * sx;
+    const py = (yCss - rect.top) * sy;
+    const inv = mInvert(state.view);
+    return mApply(inv, px, py); // return model coords
   }
+
 
   /* UI wiring */
   $$('.tool-row button[data-tool]').forEach(btn=>{
@@ -193,6 +226,8 @@
   });
   $('#flipH').addEventListener('click', ()=>{
     state.flipX = !state.flipX;
+    const cx = canvas.width * 0.5, cy = canvas.height * 0.5;
+    state.view = mMultiply(mFlipXAbout(cx, cy), state.view);
     reflectToolButtons();
     saveHistory();
     redraw();
@@ -271,8 +306,9 @@
       const dx = e.clientX - lastMove.x, dy = e.clientY - lastMove.y;
       lastMove = {x:e.clientX, y:e.clientY};
       const rect = canvas.getBoundingClientRect();
-      state.offsetX += dx * (canvas.width / rect.width) * (state.flipX ? -1 : 1);
-      state.offsetY += dy * (canvas.height / rect.height);
+      const tx = dx * (canvas.width / rect.width);
+      const ty = dy * (canvas.height / rect.height);
+      state.view = mMultiply(mTranslate(tx, ty), state.view);
       temporarilyDisableBlur(); redraw(); return;
     }
     if (!drawing) return;
@@ -286,9 +322,26 @@
     drawing = false; currentPath = []; saveHistory(); redraw();
   });
 
-  /* Touch */
+  /* Touch with 2-finger pan/zoom/rotate */
   canvas.addEventListener('touchstart', (e)=>{
-    if (!e.changedTouches || e.changedTouches.length === 0) return;
+    if (!e.changedTouches || e.touches.length === 0) return;
+
+    // Start gesture if 2+ touches: overrides drawing
+    if (e.touches.length >= 2){
+      const a = clientToCanvasPx(e.touches[0].clientX, e.touches[0].clientY);
+      const b = clientToCanvasPx(e.touches[1].clientX, e.touches[1].clientY);
+      gesture.active = true;
+      gesture.view0 = state.view.slice(0);
+      gesture.p0a = a;
+      gesture.p0b = b;
+      gesture.c0 = { x:(a.x+b.x)/2, y:(a.y+b.y)/2 };
+      drawing = false; currentPath = [];
+      temporarilyDisableBlur();
+      e.preventDefault();
+      return;
+    }
+
+    // Single-finger: move tool pans on drag; otherwise draw
     const t = e.changedTouches[0];
     if (state.tool === 'move'){
       moveDragging = true; lastMove = {x:t.clientX, y:t.clientY}; temporarilyDisableBlur(); e.preventDefault(); return;
@@ -296,22 +349,60 @@
     const pt = cssToCanvas(t.clientX, t.clientY);
     drawing = true; currentPath = [pt]; temporarilyDisableBlur(); redraw(); e.preventDefault();
   }, {passive:false});
+
   window.addEventListener('touchmove', (e)=>{
-    if (!e.changedTouches || e.changedTouches.length === 0) return;
+    if (!e.touches || e.touches.length === 0) return;
+
+    // Ongoing gesture
+    if (gesture.active && e.touches.length >= 2){
+      const a1 = clientToCanvasPx(e.touches[0].clientX, e.touches[0].clientY);
+      const b1 = clientToCanvasPx(e.touches[1].clientX, e.touches[1].clientY);
+      const c1 = { x:(a1.x+b1.x)/2, y:(a1.y+b1.y)/2 };
+
+      // Build similarity transform G mapping initial pair -> current pair in pixel space
+      const v0x = gesture.p0b.x - gesture.p0a.x, v0y = gesture.p0b.y - gesture.p0a.y;
+      const v1x = b1.x - a1.x,            v1y = b1.y - a1.y;
+      const len0 = Math.max(1e-6, Math.hypot(v0x, v0y));
+      const len1 = Math.max(1e-6, Math.hypot(v1x, v1y));
+      const s = clamp(len1 / len0, 0.2, 8); // guard rails
+      const ang0 = Math.atan2(v0y, v0x);
+      const ang1 = Math.atan2(v1y, v1x);
+      const dtheta = ang1 - ang0;
+
+      // G = T(c1) * R(dtheta) * S(s) * T(-c0)
+      let G = mTranslate(c1.x, c1.y);
+      G = mMultiply(G, mRotate(dtheta));
+      G = mMultiply(G, mScale(s));
+      G = mMultiply(G, mTranslate(-gesture.c0.x, -gesture.c0.y));
+
+      state.view = mMultiply(G, gesture.view0);
+      temporarilyDisableBlur(); redraw(); e.preventDefault();
+      return;
+    }
+
+    // Single-finger: move or draw
     const t = e.changedTouches[0];
     if (state.tool === 'move' && moveDragging){
       const dx = t.clientX - lastMove.x, dy = t.clientY - lastMove.y;
       lastMove = {x:t.clientX, y:t.clientY};
       const rect = canvas.getBoundingClientRect();
-      state.offsetX += dx * (canvas.width / rect.width) * (state.flipX ? -1 : 1);
-      state.offsetY += dy * (canvas.height / rect.height);
+      const tx = dx * (canvas.width / rect.width);
+      const ty = dy * (canvas.height / rect.height);
+      state.view = mMultiply(mTranslate(tx, ty), state.view);
       temporarilyDisableBlur(); redraw(); e.preventDefault(); return;
     }
     if (!drawing) return;
     const pt = cssToCanvas(t.clientX, t.clientY);
     currentPath.push(pt); temporarilyDisableBlur(); redraw(); e.preventDefault();
   }, {passive:false});
+
   window.addEventListener('touchend', (e)=>{
+    // End gesture if fewer than 2 touches remain
+    if (gesture.active && e.touches.length < 2){
+      gesture.active = false;
+      saveHistory();
+      return;
+    }
     if (state.tool === 'move' && moveDragging){ moveDragging = false; saveHistory(); return; }
     if (!drawing) return;
     state.paths.push({ isErase: (state.tool === 'erase'), points: currentPath.slice() });
