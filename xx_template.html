@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"/>
+  <title>XX — Template</title>
+  <link rel="stylesheet" href="assets/style.css"/>
+  <style>
+    .page { max-width: 900px; margin: 0 auto; padding: 24px; }
+    .wait-wrap { margin-top:16px; }
+    .footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px; }
+    .button-bar { display: flex; gap: 12px; justify-content: space-between; }
+  </style>
+</head>
+<body data-page="xx-template">
+  <div class="page">
+    <h1>Placeholder Title</h1>
+    <p>This is placeholder text. Replace with your page instructions/content.</p>
+
+    <div class="wait-wrap">
+      <h1>WAIT</h1>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="button-bar">
+      <button id="backBtn" class="secondary">Back</button>
+      <button id="nextBtn" class="primary">Next</button>
+    </div>
+  </div>
+
+  <script>
+    // ============================
+    // EDIT THESE THREE CONSTANTS:
+    // ============================
+    // Set where Next and Back should go (filenames in the same folder).
+    // Always pass along the query params automatically (handled below).
+    const NEXT_PAGE = "XX_set_next.html";
+    const BACK_PAGE = "XX_set_back.html";
+    // Set to true to hide the Back button on THIS page.
+    const HIDE_BACK = false;
+    // ============================
+
+    // --- Shared helpers (inline, no external deps) ---
+    function parseQuery() {
+      const q = new URLSearchParams(location.search);
+      return Object.fromEntries(q.entries());
+    }
+    function baseQueryString() {
+      const { p, n, m } = parseQuery();
+      const q = new URLSearchParams();
+      if (p) q.set("p", p);
+      if (n) q.set("n", n);
+      q.set("m", (m === "1" ? "1" : "0"));
+      return "?" + q.toString();
+    }
+
+    (function init() {
+      // Hide back if requested
+      if (HIDE_BACK) document.getElementById("backBtn").style.visibility = "hidden";
+
+      document.getElementById("nextBtn").addEventListener("click", () => {
+        if (!NEXT_PAGE) return;
+        location.href = NEXT_PAGE + baseQueryString();
+      });
+
+      document.getElementById("backBtn").addEventListener("click", () => {
+        if (!BACK_PAGE) return;
+        location.href = BACK_PAGE + baseQueryString();
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"/>
+  <title>00 — Params</title>
+  <link rel="stylesheet" href="assets/style.css"/>
+  <style>
+    .field { margin: 12px 0; }
+    label { display:block; font-weight:600; margin-bottom:6px; }
+    input[type="text"], select {
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #ccc; font-size: 16px;
+    }
+    .hint { font-size: 14px; opacity: .8; margin-top: 4px; }
+    .page { max-width: 760px; margin: 0 auto; padding: 24px; }
+    .footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px; }
+    .button-bar { display: flex; gap: 12px; justify-content: flex-end; }
+  </style>
+</head>
+<body data-page="00-params">
+  <div class="page">
+    <h1>Participant Setup</h1>
+    <p>Please enter the participant details below. These values are passed between pages via query parameters.</p>
+
+    <form id="paramsForm" autocomplete="off">
+      <div class="field">
+        <label for="p">Participant code (p)</label>
+        <input id="p" name="p" type="text" placeholder="e.g., SXX-001" required/>
+        <div class="hint">Required. Letters/numbers/dashes/underscores only.</div>
+      </div>
+
+      <div class="field">
+        <label for="n">Preferred name (n)</label>
+        <input id="n" name="n" type="text" placeholder="e.g., Alex" />
+        <div class="hint">Optional. Used to greet the participant.</div>
+      </div>
+
+      <div class="field">
+        <label for="m">Mode (m)</label>
+        <select id="m" name="m">
+          <option value="0">0 — experiment</option>
+          <option value="1">1 — dev</option>
+        </select>
+        <div class="hint">0 = experiment mode, 1 = developer mode.</div>
+      </div>
+
+      <div class="footer">
+        <div class="button-bar">
+          <!-- Back button intentionally hidden on the first page -->
+          <button type="button" id="backBtn" class="secondary" style="visibility:hidden">Back</button>
+          <button type="submit" id="nextBtn" class="primary">Next</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    // --- Helpers ---
+    function parseQuery() {
+      const q = new URLSearchParams(location.search);
+      return Object.fromEntries(q.entries());
+    }
+    function sanitizeCode(str) {
+      return (str || "").trim().replace(/[^A-Za-z0-9_\-]/g, "");
+    }
+    function buildQuery(p, n, m) {
+      const q = new URLSearchParams();
+      if (p) q.set("p", p);
+      if (n) q.set("n", n);
+      q.set("m", (m === "1" ? "1" : "0"));
+      return "?" + q.toString();
+    }
+
+    // --- Prefill if present ---
+    (function init() {
+      const { p, n, m } = parseQuery();
+      if (p) document.getElementById("p").value = p;
+      if (n) document.getElementById("n").value = n;
+      if (m === "1") document.getElementById("m").value = "1";
+    })();
+
+    // --- Submit -> go to 01_welcome.html with query params ---
+    document.getElementById("paramsForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const p = sanitizeCode(document.getElementById("p").value);
+      const n = (document.getElementById("n").value || "").trim();
+      const m = document.getElementById("m").value === "1" ? "1" : "0";
+
+      if (!p) {
+        alert("Please enter a valid participant code.");
+        return;
+      }
+      const qs = buildQuery(p, n, m);
+      location.href = "01_welcome.html" + qs;
+    });
+  </script>
+</body>
+</html>
