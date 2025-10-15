@@ -9,38 +9,19 @@
   <title>XX — Template</title>
   <link rel="stylesheet" href="assets/style.css"/>
   <style>
-    /* Keep the original look/spacing */
     .page { max-width: 900px; margin: 0 auto; padding: 24px; }
     .wait-wrap { margin-top:16px; }
     .footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px; }
     .button-bar { display: flex; gap: 12px; justify-content: space-between; }
 
-    /* Make taps crisp and avoid selection/callouts on iOS */
     html, body {
       -webkit-tap-highlight-color: transparent;
       -webkit-touch-callout: none;
-      touch-action: manipulation; /* reduces dbl-tap zoom behavior */
+      touch-action: manipulation; /* allow taps, avoid dbl-tap zoom */
     }
-
-    /* Invisible gesture zones (do NOT affect layout) */
-    .tap-zone {
-      position: fixed;
-      left: 0; right: 0;
-      background: transparent; /* fully invisible */
-      z-index: 9999;           /* above content, but not visible */
-    }
-    .tap-top    { top: 0;    height: 45vh; }
-    .tap-bottom { bottom: 0; height: 45vh; }
-
-    /* Ensure the zones never show a cursor change */
-    .tap-zone, .tap-zone * { cursor: default; }
   </style>
 </head>
 <body data-page="xx-template">
-  <!-- Invisible tap zones for the ABAB gesture -->
-  <div class="tap-zone tap-top" aria-hidden="true"></div>
-  <div class="tap-zone tap-bottom" aria-hidden="true"></div>
-
   <div class="page">
     <div class="content">
       <div class="inner">
@@ -64,13 +45,11 @@
 
   <script>
     // ============================
-    // EDIT THESE THREE CONSTANTS:
+    // NAV (unchanged appearance)
     // ============================
     const NEXT_PAGE = "XX_set_next.html";
     const BACK_PAGE = "XX_set_back.html";
-    // ============================
 
-    // --- Shared helpers (inline, no external deps) ---
     function parseQuery() {
       const q = new URLSearchParams(location.search);
       return Object.fromEntries(q.entries());
@@ -85,7 +64,6 @@
     }
 
     (function initNav() {
-      // Hide buttons (unchanged appearance to participants)
       const back = document.getElementById("backBtn");
       const next = document.getElementById("nextBtn");
       if (back) back.style.visibility = "hidden";
@@ -102,77 +80,106 @@
       });
     })();
 
-    // ========= iOS zoom suppression (extra belt & braces) =========
+    // ============================
+    // iOS zoom suppression
+    // ============================
     document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
-    // Prevent iOS Safari's double-tap zoom by short-circuiting a quick second tap.
     (function preventIOSDoubleTapZoom() {
       let lastTouchEnd = 0;
       document.addEventListener("touchend", function (e) {
         const now = Date.now();
-        if (now - lastTouchEnd <= 350) {
-          e.preventDefault();
-        }
+        if (now - lastTouchEnd <= 350) e.preventDefault();
         lastTouchEnd = now;
       }, { passive: false });
     })();
 
-    // ========= Secret ABAB gesture: Top → Bottom → Top → Bottom =========
+    // ============================
+    // Secret gesture (tablet-first)
+    // Tap Above → Below → Above → Below relative to the WAIT block
+    // ============================
     (function initSecretGesture() {
-      const REQUIRED_SEQUENCE = ["top", "bottom", "top", "bottom"];
-      const WINDOW_MS = 8000; // must complete the pattern within 8s
+      const REQUIRED = ["above", "below", "above", "below"];
+      const WINDOW_MS = 8000;
       let progress = 0;
       let timer = null;
 
-      const topZone = document.querySelector(".tap-top");
-      const bottomZone = document.querySelector(".tap-bottom");
+      const waitWrap = document.querySelector(".wait-wrap");
+      const footer = document.querySelector(".footer");
 
-      if (!topZone || !bottomZone) return;
+      if (!waitWrap) return;
 
       function resetSeq() {
         progress = 0;
         if (timer) { clearTimeout(timer); timer = null; }
       }
-
       function armWindow() {
         if (timer) clearTimeout(timer);
         timer = setTimeout(resetSeq, WINDOW_MS);
       }
 
-      function onTap(which, ev) {
-        // Block iOS default behaviors like accidental zooms/selections
-        if (ev) ev.preventDefault();
+      function classifyTap(clientY) {
+        const rect = waitWrap.getBoundingClientRect();
+        if (clientY < rect.top) return "above";
+        if (clientY > rect.bottom) return "below";
+        return "inside";
+      }
 
-        if (REQUIRED_SEQUENCE[progress] === which) {
+      function onPoint(ev) {
+        // Ignore taps that originate on the footer (to avoid accidental triggers)
+        const target = ev.target;
+        if (footer && (target === footer || target.closest(".footer"))) return;
+
+        // Prefer touch points for accuracy on iPad
+        let clientY;
+        if (ev instanceof TouchEvent) {
+          if (ev.touches.length > 1) return; // ignore multi-touch
+          clientY = ev.touches[0]?.clientY ?? ev.changedTouches[0]?.clientY;
+        } else {
+          clientY = ev.clientY;
+        }
+        if (clientY == null) return;
+
+        const where = classifyTap(clientY);
+        if (where === "inside") {
+          // Tapping directly on the WAIT block doesn't count; reset grace.
+          resetSeq();
+          return;
+        }
+
+        if (REQUIRED[progress] === where) {
           if (progress === 0) armWindow();
           progress += 1;
 
-          if (progress >= REQUIRED_SEQUENCE.length) {
-            // Success! Go to /vizex-tutorial/ root with NO query params.
+          if (progress >= REQUIRED.length) {
+            // Success → go to /vizex-tutorial/ root with NO query params.
             const path = location.pathname;
-            const match = path.match(/^(.*\/vizex-tutorial\/)/);
-            const base = location.origin + (match ? match[1] : path.replace(/[^/]*$/, ''));
-            location.replace(base); // no query string
+            const m = path.match(/^(.*\/vizex-tutorial\/)/);
+            const base = location.origin + (m ? m[1] : path.replace(/[^/]*$/, ''));
+            location.replace(base);
             return;
           }
         } else {
-          // Wrong zone; restart unless this tap matches the first step
+          // Wrong side; restart, but allow immediate restart if first matches
           resetSeq();
-          if (REQUIRED_SEQUENCE[0] === which) {
+          if (REQUIRED[0] === where) {
             progress = 1;
             armWindow();
           }
         }
       }
 
-      // Prefer touch; fall back to click for desktop testing
-      const optsActive = { passive: false };
-      const optsPassive = { passive: true };
+      // Use pointer events where available; fall back to touch/click.
+      if (window.PointerEvent) {
+        // On iPadOS Safari 17+, pointerdown works reliably.
+        window.addEventListener("pointerdown", onPoint, { passive: true });
+      } else {
+        window.addEventListener("touchstart", onPoint, { passive: true });
+        window.addEventListener("mousedown", onPoint, { passive: true });
+      }
 
-      topZone.addEventListener("touchstart", e => onTap("top", e), optsActive);
-      bottomZone.addEventListener("touchstart", e => onTap("bottom", e), optsActive);
-
-      topZone.addEventListener("click", () => onTap("top"), optsPassive);
-      bottomZone.addEventListener("click", () => onTap("bottom"), optsPassive);
+      // Recompute sequence if layout changes significantly (orientation change)
+      window.addEventListener("orientationchange", resetSeq, { passive: true });
+      window.addEventListener("resize", resetSeq, { passive: true });
     })();
   </script>
 </body>
