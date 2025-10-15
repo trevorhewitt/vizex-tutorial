@@ -60,7 +60,7 @@ const QUIZ = (() => {
     bodyHtml:
       p("You may see various things over time, just pick one and draw that")
       + p("Imagine you saw this - a line and then an oval:"),
-    stimulusSrc: stim("https://universityofsussex.eu.qualtrics.com/CP/Graphic.php?IM=IM_xQ3370C9RwNF7Ja"),
+    stimulusSrc: stim("https://universityofsussex.eu.qualtrics.com/ControlPanel/Graphic.php?IM=IM_YnWoPkG4isEUGAm"),
     questions: [
       {
         correctImg: "https://universityofsussex.eu.qualtrics.com/ControlPanel/Graphic.php?IM=IM_HwrptbGuDi88bE1",
