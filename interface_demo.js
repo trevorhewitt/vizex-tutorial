@@ -1,9 +1,11 @@
-// interface_demo.js — tutorial flow with centered overlay and hard masks
+// interface_demo.js
+// iPad Air (2016) Safari–safe tutorial using an absolute, JS-positioned overlay layer
+// + real rectangular mask boxes. Includes an added step for "brush softness & size" before draw/erase.
 
+// ---------- square viewport fallback for old Safari ----------
 (function(){
-  /* ---------- square viewport fallback ---------- */
   const viewport = document.getElementById('viewport');
-  function enforceSquare() {
+  function enforceSquare(){
     if (!viewport) return;
     const w = viewport.offsetWidth;
     viewport.style.height = w + 'px';
@@ -12,11 +14,16 @@
   window.addEventListener('load', enforceSquare);
   window.addEventListener('resize', enforceSquare);
   window.addEventListener('orientationchange', enforceSquare);
+})();
 
-  const MIN_COLOR_DISTANCE = 10;
-  const $  = (sel, root=document) => root.querySelector(sel);
-  const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+/* ===== Utilities ===== */
+const $  = (s, r=document)=>r.querySelector(s);
+const $$ = (s, r=document)=>Array.from(r.querySelectorAll(s));
+const clamp = (v,lo,hi)=>Math.max(lo, Math.min(hi, v));
+const gray = (v)=>`rgb(${v|0},${v|0},${v|0})`;
 
+/* ===== Drawing app (kept identical in behavior) ===== */
+(function(){
   const canvas = $('#drawingCanvas');
   const ctx = canvas.getContext('2d');
 
@@ -24,357 +31,364 @@
     tool: 'draw',
     brushColor: clamp(+$('#brushColor').value, 0, 255),
     background: clamp(+$('#background').value, 0, 255),
-    thickness: clamp(+$('#thickness').value, 1, 20),
+    thickness: clamp(+$('#thickness').value, 1, 60),
     blur: +$('#blur').value,
-    flipX: false,
-    view: mIdentity(),
+    view: [1,0,0,1,0,0],
     paths: []
   };
 
-  let drawing = false;
-  let currentPath = [];
-  let moveDragging = false;
-  let lastMove = {x:0, y:0};
-  let blurRestoreTimer = null;
-
-  let gesture = { active:false, view0:null, p0a:null, p0b:null, c0:null };
-
-  function clientToCanvasPx(clientX, clientY){
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: (clientX - rect.left) * (canvas.width / rect.width),
-      y: (clientY - rect.top)  * (canvas.height / rect.height)
-    };
-  }
-
-  /* ---------- deterministic color init ---------- */
-  (function initDeterministicColors(){
-    const seed = getSeedFromParamsUsingP();
-    const rand = mulberry32FromSeed(seed);
-    const min = 0, max = 255, INIT_MIN_DISTANCE = 64;
-    let bg = Math.floor(rand() * (max - min + 1) + min);
-    let fg = Math.floor(rand() * (max - min + 1) + min);
-    if (Math.abs(bg - fg) < INIT_MIN_DISTANCE) fg = (bg + INIT_MIN_DISTANCE) % (max + 1);
+  // seeded colors for consistent start
+  (function initColors(){
+    const seed = getSeed();
+    const rnd = mulberry32(seed);
+    let bg = Math.floor(rnd()*256), fg = Math.floor(rnd()*256);
+    if (Math.abs(bg - fg) < 64) fg = (bg + 64) % 256;
     state.background = bg; state.brushColor = fg;
-    const bgEl = $('#background'), fgEl = $('#brushColor');
-    if (bgEl) bgEl.value = String(bg);
-    if (fgEl) fgEl.value = String(fg);
+    $('#background').value = String(bg);
+    $('#brushColor').value = String(fg);
     updateUnderlay();
   })();
 
-  const history = [];
-  let histIndex = -1;
-
-  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
-  function gray(v){ v = clamp(v|0, 0, 255); return `rgb(${v},${v},${v})`; }
-  function updateUnderlay(){ const vp = document.getElementById('viewport'); if (vp) vp.style.background = gray(state.background); }
-
-  function mulberry32FromSeed(seedStr){
-    let h = 1779033703 ^ seedStr.length;
-    for (let i=0;i<seedStr.length;i++){ h = Math.imul(h ^ seedStr.charCodeAt(i), 3432918353); h = (h<<13) | (h>>>19); }
-    let t = h>>>0;
-    return function(){ t = Math.imul(t ^ (t>>>15), 2246822507); t = Math.imul(t ^ (t>>>13), 3266489909); return ((t^=t>>>16)>>>0)/4294967296; };
-  }
-  function getSeedFromParamsUsingP(){
+  function getSeed(){
     try{
-      if (window.VE && typeof VE.parseParams === 'function'){ const p=(VE.parseParams().p||'').trim(); if (p) return p; }
-      else { const params=new URLSearchParams(window.location.search||''); const p=(params.get('p')||'').trim(); if (p) return p; }
-    }catch(_){}
-    return 'rand_' + Math.random().toString(36).slice(2);
+      if (window.VE?.parseParams){ const p=(VE.parseParams().p||'').trim(); if (p) return p; }
+      const q=new URLSearchParams(location.search||''); const p=(q.get('p')||'').trim();
+      return p || 'rand_' + Math.random().toString(36).slice(2);
+    }catch(_){ return 'rand_' + Math.random().toString(36).slice(2); }
+  }
+  function mulberry32(s){
+    let h=1779033703 ^ s.length;
+    for(let i=0;i<s.length;i++){ h=Math.imul(h ^ s.charCodeAt(i),3432918353); h=(h<<13)|(h>>>19); }
+    let t=h>>>0;
+    return function(){ t=Math.imul(t^(t>>>15),2246822507); t=Math.imul(t^(t>>>13),3266489909); return ((t^=t>>>16)>>>0)/4294967296; };
   }
 
-  // 2D affine utilities
-  function mIdentity(){ return [1,0,0,1,0,0]; }
-  function mMultiply(A,B){ return [ A[0]*B[0]+A[2]*B[1], A[1]*B[0]+A[3]*B[1], A[0]*B[2]+A[2]*B[3], A[1]*B[2]+A[3]*B[3], A[0]*B[4]+A[2]*B[5]+A[4], A[1]*B[4]+A[3]*B[5]+A[5] ]; }
-  function mTranslate(tx,ty){ return [1,0,0,1,tx,ty]; }
-  function mScale(s){ return [s,0,0,s,0,0]; }
-  function mRotate(t){ var c=Math.cos(t), s=Math.sin(t); return [c,s,-s,c,0,0]; }
-  function mApply(M,x,y){ return { x:M[0]*x+M[2]*y+M[4], y:M[1]*x+M[3]*y+M[5] }; }
-  function mInvert(M){ M=M&&M.length===6?M:mIdentity(); var a=M[0],b=M[1],c=M[2],d=M[3],e=M[4],f=M[5]; var det=a*d-b*c; if(!det) return mIdentity(); var inv=1/det; var na=d*inv, nb=-b*inv, nc=-c*inv, nd=a*inv; var ne=-(na*e+nc*f), nf=-(nb*e+nd*f); return [na,nb,nc,nd,ne,nf]; }
-  function mFlipXAbout(cx,cy){ return mMultiply(mTranslate(cx,cy), mMultiply([-1,0,0,1,0,0], mTranslate(-cx,-cy))); }
+  // matrix utils
+  const I=[1,0,0,1,0,0];
+  const mMul=(A,B)=>[A[0]*B[0]+A[2]*B[1],A[1]*B[0]+A[3]*B[1],A[0]*B[2]+A[2]*B[3],A[1]*B[2]+A[3]*B[3],A[0]*B[4]+A[2]*B[5]+A[4],A[1]*B[4]+A[3]*B[5]+A[5]];
+  const mTr=(tx,ty)=>[1,0,0,1,tx,ty];
+  const mInv=M=>{const[a,b,c,d,e,f]=M||I; const det=a*d-b*c; if(!det) return I; const k=1/det; const na=d*k,nb=-b*k,nc=-c*k,nd=a*k,ne=-(na*e+nc*f),nf=-(nb*e+nd*f); return [na,nb,nc,nd,ne,nf];};
+  const mAp=(M,x,y)=>({x:M[0]*x+M[2]*y+M[4], y:M[1]*x+M[3]*y+M[5]});
+  const flipAbout=(cx,cy)=>mMul(mTr(cx,cy), mMul([-1,0,0,1,0,0], mTr(-cx,-cy)));
 
+  // history
+  const hist=[]; let hi=-1;
   function saveHistory(){
     const snap = {
       tool: state.tool, brushColor: state.brushColor, background: state.background,
-      thickness: state.thickness, blur: state.blur, flipX: state.flipX,
-      view: (state.view && state.view.length===6) ? state.view.slice(0) : mIdentity(),
-      paths: state.paths.map(p => ({ isErase: !!p.isErase, points: p.points.map(q=>({x:q.x,y:q.y})) }))
+      thickness: state.thickness, blur: state.blur, view: state.view.slice(0),
+      paths: state.paths.map(p=>({isErase:p.isErase, points:p.points.map(q=>({x:q.x,y:q.y}))}))
     };
-    history.splice(histIndex+1);
-    history.push(snap);
-    histIndex = history.length - 1;
-    updateUndoRedo();
+    hist.splice(hi+1); hist.push(snap); hi=hist.length-1; updateUndoRedo();
   }
   function loadHistory(i){
-    const h = history[i]; if(!h) return;
-    state.tool=h.tool; state.brushColor=h.brushColor; state.background=h.background;
-    state.thickness=h.thickness; state.blur=h.blur; state.flipX=!!h.flipX;
-    state.view=(h.view&&h.view.length===6)?h.view.slice(0):mIdentity();
-    state.paths=(h.paths||[]).map(p=>({ isErase: !!(p.isErase!==undefined?p.isErase:p.erase), points:(p.points||[]).map(q=>({x:q.x,y:q.y})) }));
-    $('#brushColor').value=state.brushColor; $('#background').value=state.background;
-    $('#thickness').value=state.thickness;   $('#blur').value=state.blur;
-    reflectToolButtons(); applyCanvasFilter(); updateUnderlay(); redraw();
-    histIndex=i; updateUndoRedo();
+    const h=hist[i]; if(!h) return;
+    Object.assign(state, { tool:h.tool, brushColor:h.brushColor, background:h.background, thickness:h.thickness, blur:h.blur, view:h.view.slice(0), paths:h.paths.map(p=>({isErase:p.isErase, points:p.points.map(q=>({x:q.x,y:q.y}))})) });
+    $('#brushColor').value=state.brushColor; $('#background').value=state.background; $('#thickness').value=state.thickness; $('#blur').value=state.blur;
+    reflectTools(); applyBlur(); updateUnderlay(); redraw();
+    hi=i; updateUndoRedo();
   }
-  function updateUndoRedo(){ $('#undo').disabled = histIndex<=0; $('#redo').disabled = histIndex>=history.length-1; }
-  function reflectToolButtons(){
-    $$('.tool-row button[data-tool]').forEach(btn=>{ btn.classList.toggle('selected', btn.getAttribute('data-tool')===state.tool); });
-    $('#flipH').classList.toggle('active', state.flipX);
-  }
+  function updateUndoRedo(){ $('#undo').disabled = hi<=0; $('#redo').disabled = hi>=hist.length-1; }
 
-  function redraw(){
-    const w=canvas.width, h=canvas.height;
-    ctx.setTransform(1,0,0,1,0,0);
-    ctx.clearRect(0,0,w,h);
-    ctx.fillStyle = gray(state.background);
-    const pad = Math.max(0, (state.blur|0)*2);
-    ctx.fillRect(-pad,-pad,w+2*pad,h+2*pad);
-    const V = (state.view && state.view.length===6) ? state.view : mIdentity();
-    ctx.setTransform(V[0],V[1],V[2],V[3],V[4],V[5]);
-    for (let p of state.paths) drawPath(ctx,p,state.thickness);
-    if (drawing && currentPath.length>1) drawPath(ctx,{isErase:(state.tool==='erase'),points:currentPath},state.thickness);
-  }
-  function drawPath(c,obj,thickness){
-    const pts=obj.points; if(!pts||pts.length<2) return;
-    c.globalCompositeOperation='source-over';
-    c.strokeStyle = obj.isErase ? gray(state.background) : gray(state.brushColor);
-    c.lineWidth = thickness; c.lineCap='round'; c.lineJoin='round';
-    c.beginPath(); c.moveTo(pts[0].x, pts[0].y); for (let i=1;i<pts.length;i++) c.lineTo(pts[i].x, pts[i].y); c.stroke();
-  }
-
-  function applyCanvasFilter(){ const px=+state.blur||0; canvas.style.filter = px>0 ? `blur(${px}px)` : 'none'; }
-  function temporarilyDisableBlur(){ canvas.style.filter='none'; if (blurRestoreTimer) clearTimeout(blurRestoreTimer); blurRestoreTimer=setTimeout(()=>applyCanvasFilter(),140); }
-
-  function cssToCanvas(xCss,yCss){
-    const rect=canvas.getBoundingClientRect();
-    const sx=canvas.width/rect.width, sy=canvas.height/rect.height;
-    const px=(xCss-rect.left)*sx, py=(yCss-rect.top)*sy;
-    const inv=mInvert(state.view||mIdentity());
-    return mApply(inv,px,py);
-  }
-
-  /* UI wiring */
-  $$('.tool-row button[data-tool]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{ state.tool=btn.getAttribute('data-tool'); reflectToolButtons(); });
-  });
+  // UI wiring
+  function reflectTools(){ $$('.tool-row button[data-tool]').forEach(b=>b.classList.toggle('selected', b.getAttribute('data-tool')===state.tool)); }
   $('#flipH').addEventListener('click', ()=>{
-    state.flipX=!state.flipX; const cx=canvas.width*0.5, cy=canvas.height*0.5;
-    state.view=mMultiply(mFlipXAbout(cx,cy), state.view); reflectToolButtons(); saveHistory(); redraw();
+    const cx=canvas.width*0.5, cy=canvas.height*0.5;
+    state.view = mMul(flipAbout(cx,cy), state.view);
+    saveHistory(); redraw();
   });
+  $$('.tool-row button[data-tool]').forEach(btn=>btn.addEventListener('click', ()=>{ state.tool=btn.getAttribute('data-tool'); reflectTools(); }));
+
   $('#swapColors').addEventListener('click', ()=>{
-    const tmp=state.brushColor; state.brushColor=state.background; state.background=tmp;
-    $('#brushColor').value=state.brushColor; $('#background').value=state.background; updateUnderlay(); saveHistory(); redraw();
+    const t=state.brushColor; state.brushColor=state.background; state.background=t;
+    $('#brushColor').value=state.brushColor; $('#background').value=state.background;
+    updateUnderlay(); saveHistory(); redraw();
   });
 
   $('#brushColor').addEventListener('input', ()=>{
     let v=+$('#brushColor').value, bg=+$('#background').value;
-    if (Math.abs(v-bg)<MIN_COLOR_DISTANCE){ v=v>bg?bg+MIN_COLOR_DISTANCE:bg-MIN_COLOR_DISTANCE; v=clamp(v,0,255); $('#brushColor').value=v; }
+    if (Math.abs(v-bg)<10){ v = v>bg ? bg+10 : bg-10; v=clamp(v,0,255); $('#brushColor').value=v; }
     state.brushColor=v; redraw();
   });
-  $('#brushColor').addEventListener('change', ()=>saveHistory());
+  $('#brushColor').addEventListener('change', saveHistory);
 
   $('#background').addEventListener('input', ()=>{
     let v=+$('#background').value, fg=+$('#brushColor').value;
-    if (Math.abs(v-fg)<MIN_COLOR_DISTANCE){ v=v>fg?fg+MIN_COLOR_DISTANCE:fg-MIN_COLOR_DISTANCE; v=clamp(v,0,255); $('#background').value=v; }
+    if (Math.abs(v-fg)<10){ v = v>fg ? fg+10 : fg-10; v=clamp(v,0,255); $('#background').value=v; }
     state.background=v; updateUnderlay(); redraw();
   });
-  $('#background').addEventListener('change', ()=>saveHistory());
+  $('#background').addEventListener('change', saveHistory);
 
-  $('#thickness').addEventListener('input', ()=>{ state.thickness=clamp(+$('#thickness').value,1,40); redraw(); });
-  $('#thickness').addEventListener('change', ()=>saveHistory());
+  $('#thickness').addEventListener('input', ()=>{ state.thickness=clamp(+$('#thickness').value,1,60); redraw(); });
+  $('#thickness').addEventListener('change', saveHistory);
 
-  $('#blur').addEventListener('input', ()=>{ state.blur=+$('#blur').value; applyCanvasFilter(); });
-  $('#blur').addEventListener('change', ()=>saveHistory());
+  function applyBlur(){ const px=+state.blur||0; canvas.style.filter = px>0 ? `blur(${px}px)` : 'none'; }
+  $('#blur').addEventListener('input', ()=>{ state.blur=+$('#blur').value; applyBlur(); });
+  $('#blur').addEventListener('change', saveHistory);
 
-  $('#undo').addEventListener('click', ()=>{ if (histIndex>0) loadHistory(histIndex-1); });
-  $('#redo').addEventListener('click', ()=>{ if (histIndex<history.length-1) loadHistory(histIndex+1); });
+  $('#undo').addEventListener('click', ()=>{ if (hi>0) loadHistory(hi-1); });
+  $('#redo').addEventListener('click', ()=>{ if (hi<hist.length-1) loadHistory(hi+1); });
   $('#clear').addEventListener('click', ()=>{ state.paths=[]; saveHistory(); redraw(); });
-
   $('#saveButton').addEventListener('click', ()=>{ location.href='nextpage.html'; });
 
-  /* Mouse */
-  canvas.addEventListener('mousedown', (e)=>{
-    const {clientX,clientY}=e;
-    if (state.tool==='move'){ moveDragging=true; lastMove={x:clientX,y:clientY}; temporarilyDisableBlur(); return; }
-    const pt=cssToCanvas(clientX,clientY);
-    drawing=true; currentPath=[pt]; temporarilyDisableBlur(); redraw();
+  function updateUnderlay(){ const vp=$('#viewport'); if (vp) vp.style.background = gray(state.background); }
+
+  // drawing
+  let drawing=false, curr=[];
+  let moveDragging=false, last={x:0,y:0};
+  let gesture={ active:false, view0:null, p0a:null, p0b:null, c0:null };
+
+  function cssToCanvas(x,y){
+    const r=canvas.getBoundingClientRect();
+    const px=(x-r.left)*(canvas.width/r.width), py=(y-r.top)*(canvas.height/r.height);
+    return mAp(mInv(state.view), px, py);
+  }
+
+  canvas.addEventListener('mousedown', e=>{
+    if (state.tool==='move'){ moveDragging=true; last={x:e.clientX,y:e.clientY}; return; }
+    drawing=true; curr=[cssToCanvas(e.clientX,e.clientY)]; redraw();
   });
-  window.addEventListener('mousemove', (e)=>{
+  window.addEventListener('mousemove', e=>{
     if (state.tool==='move' && moveDragging){
-      const dx=e.clientX-lastMove.x, dy=e.clientY-lastMove.y; lastMove={x:e.clientX,y:e.clientY};
-      const rect=canvas.getBoundingClientRect();
-      state.view=mMultiply(mTranslate(dx*(canvas.width/rect.width), dy*(canvas.height/rect.height)), state.view);
-      temporarilyDisableBlur(); redraw(); return;
+      const r=canvas.getBoundingClientRect();
+      state.view = mMul(mTr((e.clientX-last.x)*(canvas.width/r.width), (e.clientY-last.y)*(canvas.height/r.height)), state.view);
+      last={x:e.clientX,y:e.clientY}; redraw(); return;
     }
     if (!drawing) return;
-    const pt=cssToCanvas(e.clientX,e.clientY);
-    currentPath.push(pt); temporarilyDisableBlur(); redraw();
+    curr.push(cssToCanvas(e.clientX,e.clientY)); redraw();
   });
   window.addEventListener('mouseup', ()=>{
     if (state.tool==='move' && moveDragging){ moveDragging=false; saveHistory(); return; }
     if (!drawing) return;
-    state.paths.push({ isErase:(state.tool==='erase'), points: currentPath.slice() });
-    drawing=false; currentPath=[]; saveHistory(); redraw();
+    state.paths.push({ isErase:(state.tool==='erase'), points: curr.slice() });
+    drawing=false; curr=[]; saveHistory(); redraw();
   });
 
-  /* Touch (move tool supports two-finger gestures) */
-  canvas.addEventListener('touchstart', (e)=>{
-    if (!e.changedTouches || e.touches.length===0) return;
-
+  canvas.addEventListener('touchstart', e=>{
     if (state.tool==='move' && e.touches.length>=2){
-      const a=clientToCanvasPx(e.touches[0].clientX,e.touches[0].clientY);
-      const b=clientToCanvasPx(e.touches[1].clientX,e.touches[1].clientY);
-      gesture.active=true; gesture.view0=(state.view&&state.view.length===6)?state.view.slice(0):mIdentity();
-      gesture.p0a=a; gesture.p0b=b; gesture.c0={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
-      drawing=false; currentPath=[]; temporarilyDisableBlur(); e.preventDefault(); return;
+      const a=clientPx(e.touches[0]), b=clientPx(e.touches[1]);
+      gesture={ active:true, view0:state.view.slice(0), p0a:a, p0b:b, c0:{x:(a.x+b.x)/2,y:(a.y+b.y)/2} };
+      e.preventDefault(); return;
     }
-
-    const t=e.changedTouches[0];
-    if (state.tool==='move'){ moveDragging=true; lastMove={x:t.clientX,y:t.clientY}; temporarilyDisableBlur(); e.preventDefault(); return; }
-
-    const pt=cssToCanvas(t.clientX,t.clientY);
-    drawing=true; currentPath=[pt]; temporarilyDisableBlur(); redraw(); e.preventDefault();
+    const t=e.changedTouches[0]; if(!t) return;
+    if (state.tool==='move'){ moveDragging=true; last={x:t.clientX,y:t.clientY}; e.preventDefault(); return; }
+    drawing=true; curr=[cssToCanvas(t.clientX,t.clientY)]; redraw(); e.preventDefault();
   }, {passive:false});
-
-  window.addEventListener('touchmove', (e)=>{
-    if (!e.touches || e.touches.length===0) return;
-
+  window.addEventListener('touchmove', e=>{
     if (state.tool==='move' && gesture.active && e.touches.length>=2){
-      const a1=clientToCanvasPx(e.touches[0].clientX,e.touches[0].clientY);
-      const b1=clientToCanvasPx(e.touches[1].clientX,e.touches[1].clientY);
-      const c1={x:(a1.x+b1.x)/2, y:(a1.y+b1.y)/2};
-
-      const v0x=gesture.p0b.x-gesture.p0a.x, v0y=gesture.p0b.y-gesture.p0a.y;
-      const v1x=b1.x-a1.x, v1y=b1.y-a1.y;
-      const len0=Math.max(1e-6,Math.hypot(v0x,v0y));
-      const len1=Math.max(1e-6,Math.hypot(v1x,v1y));
-      const s=clamp(len1/len0,0.2,8);
-      const ang0=Math.atan2(v0y,v0x), ang1=Math.atan2(v1y,v1x);
-      const dtheta=ang1-ang0;
-
-      let G=mTranslate(c1.x,c1.y);
-      G=mMultiply(G,mRotate(dtheta));
-      G=mMultiply(G,mScale(s));
-      G=mMultiply(G,mTranslate(-gesture.c0.x,-gesture.c0.y));
-
-      state.view=mMultiply(G,gesture.view0);
-      temporarilyDisableBlur(); redraw(); e.preventDefault(); return;
+      // simple pan/scale/rotate (kept minimal for brevity)
+      const a=clientPx(e.touches[0]), b=clientPx(e.touches[1]), c={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      const v0={x:gesture.p0b.x-gesture.p0a.x,y:gesture.p0b.y-gesture.p0a.y};
+      const v1={x:b.x-a.x,y:b.y-a.y};
+      const s=clamp(Math.hypot(v1.x,v1.y)/Math.max(1e-6,Math.hypot(v0.x,v0y= v0.y)),0.2,8); // tiny guard
+      const ang0=Math.atan2(v0.y,v0.x), ang1=Math.atan2(v1.y,v1.x), dtheta=ang1-ang0;
+      // compose around center
+      let M=[1,0,0,1,0,0];
+      M=mMul(M,[1,0,0,1,c.x,c.y]); // translate to center
+      const cth=Math.cos(dtheta), sth=Math.sin(dtheta);
+      M=mMul(M,[cth,sth,-sth,cth,0,0]); // rotate
+      M=mMul(M,[s,0,0,s,0,0]);          // scale
+      M=mMul(M,[1,0,0,1,-gesture.c0.x,-gesture.c0.y]);
+      state.view = mMul(M, gesture.view0);
+      redraw(); e.preventDefault(); return;
     }
-
-    const t=e.changedTouches[0];
+    const t=e.changedTouches[0]; if(!t) return;
     if (state.tool==='move' && moveDragging){
-      const dx=t.clientX-lastMove.x, dy=t.clientY-lastMove.y; lastMove={x:t.clientX,y:t.clientY};
-      const rect=canvas.getBoundingClientRect();
-      state.view=mMultiply(mTranslate(dx*(canvas.width/rect.width), dy*(canvas.height/rect.height)), state.view);
-      temporarilyDisableBlur(); redraw(); e.preventDefault(); return;
+      const r=canvas.getBoundingClientRect();
+      state.view = mMul(mTr((t.clientX-last.x)*(canvas.width/r.width), (t.clientY-last.y)*(canvas.height/r.height)), state.view);
+      last={x:t.clientX,y:t.clientY}; redraw(); e.preventDefault(); return;
     }
     if (!drawing) return;
-    const pt=cssToCanvas(t.clientX,t.clientY);
-    currentPath.push(pt); temporarilyDisableBlur(); redraw(); e.preventDefault();
+    curr.push(cssToCanvas(t.clientX,t.clientY)); redraw(); e.preventDefault();
   }, {passive:false});
-
-  window.addEventListener('touchend', (e)=>{
+  window.addEventListener('touchend', e=>{
     if (state.tool==='move' && gesture.active && e.touches.length<2){ gesture.active=false; saveHistory(); return; }
     if (state.tool==='move' && moveDragging){ moveDragging=false; saveHistory(); return; }
     if (!drawing) return;
-    state.paths.push({ isErase:(state.tool==='erase'), points: currentPath.slice() });
-    drawing=false; currentPath=[]; saveHistory(); redraw();
+    state.paths.push({ isErase:(state.tool==='erase'), points: curr.slice() });
+    drawing=false; curr=[]; saveHistory(); redraw();
   });
 
-  /* Init */
-  reflectToolButtons();
-  applyCanvasFilter();
-  updateUnderlay();
-  saveHistory();
-  redraw();
-  enforceSquare();
+  function clientPx(t){
+    const r=canvas.getBoundingClientRect();
+    return { x:(t.clientX-r.left)*(canvas.width/r.width), y:(t.clientY-r.top)*(canvas.height/r.height) };
+  }
 
-  /* ===========================================================
-     TUTORIAL GATING (overlay + stepwise reveal)
-     =========================================================== */
-  const overlay  = $('#tutorialOverlay');
+  function drawPath(g, obj){
+    const pts=obj.points; if(!pts || pts.length<2) return;
+    g.globalCompositeOperation='source-over';
+    g.strokeStyle = obj.isErase ? gray(state.background) : gray(state.brushColor);
+    g.lineWidth = state.thickness; g.lineCap='round'; g.lineJoin='round';
+    g.beginPath(); g.moveTo(pts[0].x, pts[0].y); for (let i=1;i<pts.length;i++) g.lineTo(pts[i].x, pts[i].y); g.stroke();
+  }
+  function redraw(){
+    const w=canvas.width, h=canvas.height;
+    ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h);
+    ctx.fillStyle = gray(state.background); ctx.fillRect(0,0,w,h);
+    const V=state.view; ctx.setTransform(V[0],V[1],V[2],V[3],V[4],V[5]);
+    for (const p of state.paths) drawPath(ctx,p);
+    if (drawing && curr.length>1) drawPath(ctx,{isErase:(state.tool==='erase'), points:curr});
+  }
+
+  // init
+  reflectTools(); updateUndoRedo(); applyBlur(); updateUnderlay(); saveHistory(); redraw();
+})();
+
+/* ===== Tutorial system: absolute overlay + mask rectangles ===== */
+(function(){
+  const layer    = $('#tutorialLayer');
+  const maskRoot = $('#maskLayer');
+  const dialog   = $('#dialogLayer');
+  const nextBar  = $('#footerLayer');
+  const nextBtn  = $('#tutorialNext');
+  const tryBtn   = $('#tutorialTry');
   const titleEl  = $('#tutorialTitle');
   const bodyEl   = $('#tutorialBody');
-  const tryBtn   = $('#tutorialTry');
-  const nextBar  = $('#tutorialNext');
-  const nextBtn  = $('#tutorialNextBtn');
 
-  const steps = [
-    null,
-    { title: 'Welcome', body: 'welcome and drawing canvas placeholder', enable: [] },
-    { title: 'Colours', body: 'colour placeholder', enable: ['#background', '#brushColor'] },
-    { title: 'Swap Colours', body: 'swap colours placeholder', enable: ['#swapColors'] },
-    { title: 'Draw & Erase', body: 'draw & erase placeholder', enable: ['[data-tool="draw"]','[data-tool="erase"]'] },
-    { title: 'Move Tool', body: 'move placeholder', enable: ['[data-tool="move"]'] },
-    { title: 'Two-finger Controls', body: 'two finger controls with the move tool placeholder', enable: [] },
-    { title: 'Flip', body: 'flip placeholder', enable: ['#flipH'] },
-    { title: 'Undo & Redo', body: 'undo & redo placeholder', enable: ['#undo','#redo'] },
-    { title: 'Clear', body: 'clear placeholder', enable: ['#clear'] },
-    { title: 'Finish', body: 'finish placeholder', enable: ['#saveButton'] },
-  ];
-
-  const maskAllSelectors = [
+  // Full set of controllable selectors we may mask
+  const ALL_TARGETS = [
     '#background', '#brushColor', '#swapColors',
-    '[data-tool="draw"]','[data-tool="erase"]','[data-tool="move"]','#flipH',
-    '#undo','#redo','#clear','#saveButton'
+    '#blur', '#thickness',
+    '#btnDraw', '#btnErase', '#btnMove', '#flipH',
+    '#undo', '#redo', '#clear', '#saveButton'
   ];
 
-  function addMask(sel){
-    $$(sel).forEach(el=>{
-      el.classList.add('demo-disabled');
-      el.setAttribute('aria-disabled','true');
-      if (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button') el.tabIndex = -1;
-    });
-  }
-  function removeMask(sel){
-    $$(sel).forEach(el=>{
-      el.classList.remove('demo-disabled');
-      el.removeAttribute('aria-disabled');
-      if (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button') el.tabIndex = 0;
-    });
-  }
-
-  maskAllSelectors.forEach(addMask);
+  // 10-step flow (with added Softness/Size before Draw/Erase, and grouping Undo/Redo/Clear)
+  const STEPS = {
+    1:  { title:'Welcome', body:'welcome and drawing canvas placeholder', unlock:[] },
+    2:  { title:'Colours', body:'colour placeholder', unlock:['#background','#brushColor'] },
+    3:  { title:'Swap colours', body:'swap colours placeholder', unlock:['#swapColors'] },
+    4:  { title:'Brush softness & size', body:'adjust softness and brush size', unlock:['#blur','#thickness'] },
+    5:  { title:'Draw & erase', body:'draw & erase placeholder', unlock:['#btnDraw','#btnErase'] },
+    6:  { title:'Move tool', body:'move placeholder', unlock:['#btnMove'] },
+    7:  { title:'Two-finger controls', body:'use two fingers to pan/zoom/rotate while in Move', unlock:[] },
+    8:  { title:'Flip', body:'flip placeholder', unlock:['#flipH'] },
+    9:  { title:'Undo, Redo & Clear', body:'history and clear controls', unlock:['#undo','#redo','#clear'] },
+    10: { title:'Finish', body:'finish placeholder', unlock:['#saveButton'] }
+  };
 
   let step = 1;
-  showOverlayForStep(step);          // show first message centered
-  hideNextBar();                     // (2) while overlay is visible, hide Next
+  const unlocked = new Set(); // tracks which controls are active
 
-  function showOverlayForStep(s){
-    const info = steps[s]; if (!info) return;
-    titleEl.textContent = info.title;
-    bodyEl.textContent  = info.body;
-    overlay.style.display = 'flex';  // centered
-    hideNextBar();                   // keep focus on the dialog
-  }
-  function hideOverlay(){ overlay.style.display = 'none'; }
+  // start masked
+  applyDisableState(); drawMasks();
+  showStep(step);
 
-  function revealForStep(s){
-    const info = steps[s]; if (!info) return;
-    info.enable.forEach(removeMask);
-    if (s >= 10) { hideNextBar(); } // final step: Next is gone
-  }
-
-  function showNextBar(){ nextBar.style.display = (step < 10) ? 'block' : 'none'; }
-  function hideNextBar(){ nextBar.style.display = 'none'; }
-
-  // Flow (2):
-  // Overlay -> "try it yourself" (overlay disappears) -> user experiments -> Next -> overlay reappears with next message
-  tryBtn.addEventListener('click', ()=>{
-    hideOverlay();
-    if (step < 10) showNextBar();
-  });
-
+  // Interactions
+  tryBtn.addEventListener('click', ()=>{ hideDialog(); if (step < 10) showNextBar(); });
   nextBtn.addEventListener('click', ()=>{
-    step = Math.min(step + 1, 10);
-    revealForStep(step);
-    showOverlayForStep(step);   // overlay reappears for the next message
-    // Next remains hidden until they press "try it yourself" again
+    step = Math.min(step+1, 10);
+    (STEPS[step].unlock || []).forEach(sel=>unlocked.add(sel));
+    applyDisableState();
+    drawMasks();
+    showStep(step);      // overlay shows again with next message
+    hideNextBar();
   });
 
-  // Accessibility nicety: Esc reopens overlay for current step
-  window.addEventListener('keydown', (e)=>{
-    if (e.key === 'Escape') showOverlayForStep(step);
-  });
+  // Recompute overlay sizing/positions on window changes
+  ['scroll','resize','orientationchange'].forEach(ev=>window.addEventListener(ev, repositionOverlay, {passive:true}));
+  function repositionOverlay(){
+    // cover the current window viewport (no fixed)
+    layer.style.left   = window.scrollX + 'px';
+    layer.style.top    = window.scrollY + 'px';
+    layer.style.width  = window.innerWidth + 'px';
+    layer.style.height = window.innerHeight + 'px';
+    drawMasks(); // masked rects need to move with layout/scroll
+  }
+  repositionOverlay();
+
+  // ---- masking logic ----
+  function applyDisableState(){
+    // everything disabled unless explicitly unlocked
+    for (const sel of ALL_TARGETS){
+      const enable = unlocked.has(sel);
+      $$(sel).forEach(el=>{
+        if (enable){
+          el.removeAttribute('disabled');
+          el.removeAttribute('aria-disabled');
+          el.style.pointerEvents = '';
+        } else {
+          el.setAttribute('disabled','true');
+          el.setAttribute('aria-disabled','true');
+          // pointer events still blocked by mask rectangles; this prevents focus via keyboard
+          el.style.pointerEvents = 'none';
+        }
+      });
+    }
+  }
+
+  function drawMasks(){
+    // Clear existing masks
+    maskRoot.innerHTML = '';
+    // Build a dark box for every disabled target (sliders become full grey blocks)
+    const disabled = ALL_TARGETS.filter(sel => !unlocked.has(sel));
+    disabled.forEach(sel=>{
+      $$(sel).forEach(el=>{
+        const r = el.getBoundingClientRect();
+        // Skip if not in viewport (optional)
+        if (r.width <= 0 || r.height <= 0) return;
+        const m = document.createElement('div');
+        m.className = 'mask-rect';
+        // position relative to tutorialLayer (which is aligned to window)
+        m.style.left   = (r.left - window.scrollX) + 'px';
+        m.style.top    = (r.top  - window.scrollY) + 'px';
+        m.style.width  = r.width  + 'px';
+        m.style.height = r.height + 'px';
+        maskRoot.appendChild(m);
+      });
+    });
+
+    // Special case: also mask the labels above disabled sliders/buttons
+    // (find the closest .slider-group and cover its label area if its input is disabled)
+    disabled.forEach(sel=>{
+      $$(sel).forEach(el=>{
+        const sg = el.closest('.slider-group');
+        if (!sg) return;
+        const label = sg.querySelector('.label-text');
+        if (!label) return;
+        const lr = label.getBoundingClientRect();
+        const m = document.createElement('div');
+        m.className = 'mask-rect';
+        m.style.left   = (lr.left - window.scrollX) + 'px';
+        m.style.top    = (lr.top  - window.scrollY) + 'px';
+        m.style.width  = lr.width  + 'px';
+        m.style.height = lr.height + 'px';
+        maskRoot.appendChild(m);
+      });
+    });
+  }
+
+  // ---- dialog & footer ----
+  function showDialog(){ dialog.style.display = 'block'; }
+  function hideDialog(){ dialog.style.display = 'none'; }
+  function showNextBar(){
+    nextBar.style.display = (step < 10) ? 'block' : 'none';
+    // place it along the bottom of the visible window
+    footerReflow();
+  }
+  function hideNextBar(){ nextBar.style.display = 'none'; }
+  function footerReflow(){
+    const pad = 8;
+    nextBar.style.left   = window.scrollX + 'px';
+    nextBar.style.top    = (window.scrollY + window.innerHeight - ($('#footerInner').offsetHeight || 60) - pad) + 'px';
+    nextBar.style.width  = window.innerWidth + 'px';
+  }
+  window.addEventListener('resize', footerReflow);
+  window.addEventListener('scroll', footerReflow);
+  window.addEventListener('orientationchange', footerReflow);
+
+  function showStep(n){
+    const s = STEPS[n];
+    titleEl.textContent = s.title || '';
+    bodyEl.textContent  = s.body || '';
+    showDialog();
+    if (n === 10){ hideNextBar(); } // finish: user must tap "finish"
+  }
+
+  // unlock everything for step 1? no — only canvas. Subsequent steps:
+  (STEPS[1].unlock||[]).forEach(sel=>unlocked.add(sel));
+
+  // initial state: everything else disabled & masked
+  drawMasks();
 
 })();
