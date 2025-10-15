@@ -53,6 +53,34 @@
     };
   }
 
+    /* ---------- one-off deterministic color init (like Script 1) ---------- */
+  (function initDeterministicColors(){
+    const seed = getSeedFromParamsUsingP();
+    const rand = mulberry32FromSeed(seed);
+
+    // 0–255 range
+    const min = 0, max = 255;
+    const INIT_MIN_DISTANCE = 64; // ~0.25 * 255
+
+    let bg = Math.floor(rand() * (max - min + 1) + min);
+    let fg = Math.floor(rand() * (max - min + 1) + min);
+
+    if (Math.abs(bg - fg) < INIT_MIN_DISTANCE) {
+      fg = (bg + INIT_MIN_DISTANCE) % (max + 1);
+    }
+
+    // Apply to state + sliders
+    state.background = bg;
+    state.brushColor = fg;
+    const bgEl = $('#background');
+    const fgEl = $('#brushColor');
+    if (bgEl) bgEl.value = String(bg);
+    if (fgEl) fgEl.value = String(fg);
+
+    updateUnderlay(); // keep viewport underlay in sync
+  })();
+
+
   const history = [];
   let histIndex = -1;
 
@@ -62,6 +90,35 @@
   function updateUnderlay(){
     var vp = document.getElementById('viewport');
     if (vp) vp.style.background = gray(state.background); // matches canvas bg
+  }
+
+  /* ---------- seeded color helpers (match Script 1 behavior) ---------- */
+  function mulberry32FromSeed(seedStr){
+    let h = 1779033703 ^ seedStr.length;
+    for (let i = 0; i < seedStr.length; i++) {
+      h = Math.imul(h ^ seedStr.charCodeAt(i), 3432918353);
+      h = (h << 13) | (h >>> 19);
+    }
+    let t = h >>> 0;
+    return function() {
+      t = Math.imul(t ^ (t >>> 15), 2246822507);
+      t = Math.imul(t ^ (t >>> 13), 3266489909);
+      return ((t ^= t >>> 16) >>> 0) / 4294967296;
+    };
+  }
+
+  function getSeedFromParamsUsingP(){
+    try {
+      if (window.VE && typeof VE.parseParams === 'function') {
+        const p = (VE.parseParams().p || '').trim();
+        if (p) return p;
+      } else if (typeof URLSearchParams !== 'undefined') {
+        const params = new URLSearchParams(window.location.search || '');
+        const p = (params.get('p') || '').trim();
+        if (p) return p;
+      }
+    } catch(_) {}
+    return 'rand_' + Math.random().toString(36).slice(2);
   }
 
   // 2D affine matrix utilities (model -> canvas pixels): [a,b,c,d,e,f]
