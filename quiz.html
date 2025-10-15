@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"/>
+  <title>Drawing Guidelines Quiz — The Vision Experiment</title>
+  <link rel="stylesheet" href="assets/style.css"/>
+  <style>
+    .page { max-width: 900px; margin: 0 auto; padding: 24px; }
+    .footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px; }
+    .button-bar { display: flex; gap: 12px; justify-content: space-between; }
+
+    .quiz-wrap { display: grid; gap: 16px; }
+    .guideline-header { margin-bottom: 4px; }
+    .guideline-header h1 { margin: 0; }
+    .guideline-text p { margin: 0.5em 0; }
+
+    .stimulus-wrap { display: grid; place-items: center; }
+    .stimulus-wrap img { max-width: 100%; height: auto; }
+
+    .choice-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    .choice { display: grid; gap: 8px; }
+    .choice img { width: 100%; height: auto; border: 6px solid transparent; border-radius: 12px; user-select: none; }
+    .choice img[role="button"] { cursor: pointer; }
+    .choice-label { text-align: center; font-size: 14px; opacity: 0.8; }
+
+    .prompt { margin-top: 4px; font-weight: 600; }
+
+    .msgbox { min-height: 2.5em; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,0.04); }
+    .counter { font-size: 14px; opacity: 0.75; }
+
+    @media (max-width: 720px){
+      .choice-wrap { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body data-page="guidelines-quiz">
+  <div class="page">
+    <div class="content">
+      <div class="inner">
+        <div class="quiz-wrap">
+          <div class="guideline-header">
+            <h1 id="xGuidelineTitle">Guideline</h1>
+            <div class="counter" id="xQuestionCounter">Question</div>
+          </div>
+
+          <div class="guideline-text" id="xGuidelineText">
+            <!-- Filled by JS -->
+          </div>
+
+          <div class="stimulus-wrap">
+            <img id="xStimulusImg" alt="Example of what was seen"/>
+          </div>
+
+          <p class="prompt">Click on which drawing you think is correct:</p>
+
+          <div class="choice-wrap">
+            <div class="choice">
+              <img id="xImgLeft" alt="Left choice" role="button" tabindex="0" draggable="false"/>
+              <div class="choice-label">Left</div>
+            </div>
+            <div class="choice">
+              <img id="xImgRight" alt="Right choice" role="button" tabindex="0" draggable="false"/>
+              <div class="choice-label">Right</div>
+            </div>
+          </div>
+
+          <div class="msgbox" id="xMessageBox"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="button-bar">
+      <button id="xBackButton" class="secondary">Back</button>
+      <button id="xNextButton" class="primary" style="display:none;">Next</button>
+    </div>
+  </div>
+
+  <script src="assets/quiz.js"></script>
+</body>
+</html>
