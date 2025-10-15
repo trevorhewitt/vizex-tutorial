@@ -3,103 +3,276 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
-  <title>Drawing — Tutorial (iPad-safe)</title>
+  <title>Drawing — Tutorial</title>
   <link rel="stylesheet" href="assets/style.css"/>
   <script src="assets/util.js" defer></script>
-
   <style>
-    /* ===== Your drawing UI (unchanged look) ===== */
-    #appRoot{
-      --viewport-size: 550px; --controls-width: 550px;
-      --slider-track-h: 42px; --slider-thumb-d: 38px;
-      --thumb-outline:#005197; --divider:#ccc;
-      display:flex; flex-direction:column; align-items:center; gap:16px; width:100%;
-      user-select:none; -webkit-user-select:none;
-    }
-    #viewport{
-      width:var(--viewport-size); aspect-ratio:1/1; height:auto;
-      position:relative; overflow:hidden; border:6px solid #00c853; box-sizing:border-box;
-      background:#f0f0f0; display:flex; align-items:center; justify-content:center; line-height:0; touch-action:none;
-    }
-    canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; transform:translateZ(0);
-      vertical-align:top; cursor:crosshair; touch-action:none; user-select:none; }
+    /* ===== Drawing App (scoped) — drop-in replacement ===== */
 
-    .controls{ margin:0 auto; width:var(--controls-width); display:flex; flex-direction:column; gap:12px; text-transform:lowercase; }
-    .row{ display:flex; gap:12px; align-items:flex-start; }
-    .row.space-between{ justify-content:space-between; }
-    .controls .row.space-between > .slider-group{ flex:1 1 0; min-width:0; }
-    #swapColors{ flex:0 0 84px; height:calc(var(--slider-track-h) + 10px); padding:0 8px; border-radius:8px; background:#fff; border:1px solid #ccc; }
-    .divider,.col-divider{ background:var(--divider); }
-    .divider{ width:1px; height:24px; margin:0 8px; align-self:center; }
-    .col-divider{ width:1px; margin:0 12px; }
-    .slider-group{ display:flex; flex-direction:column; align-items:stretch; gap:6px; min-height:56px; }
-    .label-text{ font-size:.95rem; line-height:1.2; text-align:center; }
-    .tool-row,.actions{ display:flex; align-items:center; gap:8px; text-transform:lowercase; }
-    .tool-row button,.actions button{ flex:1; padding:8px; font-size:14px; background:#fff; border:1px solid #ccc; border-radius:10px; }
-    .tool-row button.selected,.tool-row button.active{ background:#ddd; border-color:#888; }
-    #flipH{ background:#fff; border:1px solid #ccc; }
+    #appRoot {
+      /* Layout vars */
+      --viewport-size: 550px;       /* visual square side length */
+      --controls-width: 550px;
 
-    input[type="range"]{ -webkit-appearance:none; appearance:none; width:100%; background:transparent; padding:12px 0; }
-    input[type="range"]::-webkit-slider-runnable-track{ height:var(--slider-track-h); border-radius:999px; background:transparent; background-position:center; background-repeat:no-repeat; background-size:cover; }
-    input[type="range"]::-moz-range-track{ height:var(--slider-track-h); border-radius:999px; background:transparent; background-position:center; background-repeat:no-repeat; background-size:cover; }
-    input[type="range"]::-webkit-slider-thumb{ -webkit-appearance:none; width:var(--slider-thumb-d); height:var(--slider-thumb-d); border-radius:50%; background:transparent; border:3px solid var(--thumb-outline); margin-top:calc((var(--slider-track-h) - var(--slider-thumb-d))/2); }
-    input[type="range"]::-moz-range-thumb{ width:var(--slider-thumb-d); height:var(--slider-thumb-d); border-radius:50%; background:transparent; border:3px solid var(--thumb-outline); }
-    input[type="range"]:focus-visible::-webkit-slider-thumb{ box-shadow:0 0 0 3px rgba(38,50,56,.25); }
-    input[type="range"]:focus-visible::-moz-range-thumb{ box-shadow:0 0 0 3px rgba(38,50,56,.25); }
+      /* Slider sizing vars — TWEAK THESE 2 */
+      --slider-track-h: 42px;       /* track height (image area) */
+      --slider-thumb-d: 38px;       /* thumb diameter */
 
-    /* Track images (as in your original) */
-    #background::-webkit-slider-runnable-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/colour_zes2mh.png'); }
-    #brushColor::-webkit-slider-runnable-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/brightness_clear_z6urk1.png'); }
-    #occludeCenter::-webkit-slider-runnable-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/centre_clear_yssx9k.png'); }
-    #occludeEdge::-webkit-slider-runnable-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/edge_clear_jbudwf.png'); }
-    #blur::-webkit-slider-runnable-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/blur_clear_v2_j4ntub.png'); }
-    #thickness::-webkit-slider-runnable-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/thickness_clear_kzsa5m.png'); }
+      /* Colors */
+      --thumb-outline: #005197;
+      --divider: #cccccc;
 
-    #background::-moz-range-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/colour_zes2mh.png'); }
-    #brushColor::-moz-range-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/brightness_clear_z6urk1.png'); }
-    #occludeCenter::-moz-range-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/centre_clear_yssx9k.png'); }
-    #occludeEdge::-moz-range-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/edge_clear_jbudwf.png'); }
-    #blur::-moz-range-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/blur_clear_v2_j4ntub.png'); }
-    #thickness::-moz-range-track{ background-image:url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/thickness_clear_kzsa5m.png'); }
-
-    /* ===== iPad-safe tutorial layer (JS-positioned absolute, not fixed) ===== */
-    #tutorialLayer{ position:absolute; left:0; top:0; width:0; height:0; z-index:10050; pointer-events:none; }
-    #maskLayer{ position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:auto; }
-    .mask-rect{
-      position:absolute; background:#2a2a2a; border-radius:10px;
-      box-shadow:0 0 0 1px rgba(0,0,0,0.25) inset; /* feel like a box */
-    }
-    /* Dialog (centered via translate, lives inside tutorialLayer) */
-    #dialogLayer{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); pointer-events:auto; display:none; }
-    .dialog-card{
-      max-width:min(720px, 90vw); max-height:min(80vh, 560px);
-      background:#fff; border-radius:14px; box-shadow:0 10px 40px rgba(0,0,0,0.35);
-      padding:22px; color:#111; overflow:auto;
-    }
-    .dialog-card h2{ margin:0 0 8px; font-size:20px; }
-    .dialog-card .body{ font-size:16px; line-height:1.45; }
-    .dialog-actions{ margin-top:16px; display:flex; justify-content:flex-end; gap:10px; }
-    .btn{ padding:10px 16px; font-size:15px; border-radius:10px; border:1px solid #0b66c3; background:#e8f2ff; color:#0b66c3; cursor:pointer; }
-
-    /* Next button bar (also in tutorialLayer; JS places it at window bottom) */
-    #footerLayer{ position:absolute; pointer-events:auto; display:none; }
-    #footerInner{
-      display:flex; justify-content:center;
-      padding:10px 12px; width:100%;
-    }
-    #tutorialNext{
-      padding:12px 18px; font-size:15px; border-radius:999px; border:1px solid #555; background:#fff; cursor:pointer;
-      box-shadow:0 3px 12px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      user-select: none;
+      -webkit-user-select: none;
+      width: 100%;
     }
 
-    /* Save/dev overlays (unchanged) */
-    #savingOverlay{ position:fixed; inset:0; background:rgba(0,0,0,0.25); display:none; z-index:9999; }
-    #devConfirm{ position:fixed; inset:0; background:rgba(0,0,0,0.4); display:none; z-index:9999; align-items:center; justify-content:center; }
-    #devConfirm .panel{ background:#fff; color:#111; padding:16px; border-radius:12px; width:min(90vw,520px); }
-    #devConfirm .actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:10px; }
-    #devConfirm button{ padding:10px 18px; border:none; border-radius:10px; }
-    #devConfirm .cancel{ background:#ddd; }
-    #devConfirm .ok{ background:#333; color:#fff; }
+    /* ===== Viewport / Canvas ===== */
+    #appRoot #viewport {
+      width: var(--viewport-size);
+      aspect-ratio: 1 / 1;
+      height: auto;
+      position: relative;
+      overflow: hidden;          /* seam guard */
+      border: 6px solid #00c853; /* thicker green border */
+      box-sizing: border-box;
+      background: #f0f0f0;
+      display: flex; align-items: center; justify-content: center;
+      line-height: 0;            /* seam guard */
+      touch-action: none;
+    }
+
+    #appRoot canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;            /* seam guard */
+      vertical-align: top;       /* seam guard */
+      transform: translateZ(0);  /* reduces subpixel hairlines */
+      cursor: crosshair;
+      touch-action: none;
+      user-select: none;
+    }
+
+    /* ===== Controls wrapper ===== */
+    #appRoot .controls {
+      margin: 0 auto;
+      width: var(--controls-width);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      text-transform: lowercase;
+    }
+
+    #appRoot .row { display: flex; gap: 12px; align-items: flex-start; }
+    #appRoot .row.space-between { justify-content: space-between; }
+
+    /* First row: background | swap | brush color
+       Make sliders take most width; button thin */
+    #appRoot .controls .row.space-between > .slider-group {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+    #appRoot #swapColors {
+      flex: 0 0 84px;           /* thin button */
+      height: calc(var(--slider-track-h) + 10px);
+      padding: 0 8px;
+      border-radius: 8px;
+      background: #fff;
+      border: 1px solid #ccc;
+    }
+
+    /* Dividers */
+    #appRoot .divider, #appRoot .col-divider {
+      pointer-events: none;
+      background: var(--divider);
+    }
+    #appRoot .divider { width: 1px; height: 24px; margin: 0 8px; align-self: center; }
+    #appRoot .col-divider { width: 1px; margin: 0 12px; }
+
+    /* Slider groups: label above control */
+    #appRoot .slider-group {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+      min-height: 56px;
+    }
+    #appRoot .label-text { font-size: 0.95rem; line-height: 1.2; text-align: center; }
+
+    /* ===== Buttons ===== */
+    #appRoot .tool-row, #appRoot .actions {
+      display: flex; align-items: center; gap: 8px; text-transform: lowercase;
+    }
+    #appRoot .tool-row button, #appRoot .actions button {
+      flex: 1; padding: 8px; font-size: 14px; background: #fff; border: 1px solid #ccc;
+      border-radius: 10px;
+    }
+    #appRoot .tool-row button.selected, #appRoot .tool-row button.active {
+      background: #ddd; border-color: #888;
+    }
+    #appRoot #flipH { background: #fff; border: 1px solid #ccc; }
+
+    /* ===== Range inputs (shared) ===== */
+    #appRoot input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      background: transparent;   /* avoid Safari extra track */
+      padding: 12px 0;           /* increases hit area without shifting visuals */
+    }
+
+    /* Track — WebKit */
+    #appRoot input[type="range"]::-webkit-slider-runnable-track {
+      height: var(--slider-track-h);
+      border-radius: 999px;
+      background: transparent;  
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: cover;
+    }
+
+    /* Track — Firefox */
+    #appRoot input[type="range"]::-moz-range-track {
+      height: var(--slider-track-h);
+      border-radius: 999px;
+      background: transparent;  
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: cover;
+    }
+
+    /* Thumb — transparent fill, outline only */
+    #appRoot input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: var(--slider-thumb-d);
+      height: var(--slider-thumb-d);
+      border-radius: 50%;
+      background: transparent;
+      border: 3px solid var(--thumb-outline);
+      box-shadow: none;
+      /* Center thumb vertically over thicker track (WebKit honors margin-top) */
+      margin-top: calc((var(--slider-track-h) - var(--slider-thumb-d)) / 2);
+    }
+    #appRoot input[type="range"]::-moz-range-thumb {
+      width: var(--slider-thumb-d);
+      height: var(--slider-thumb-d);
+      border-radius: 50%;
+      background: transparent;
+      border: 3px solid var(--thumb-outline);
+      box-shadow: none;
+    }
+
+    /* Focus ring on thumb without filling it */
+    #appRoot input[type="range"]:focus-visible::-webkit-slider-thumb {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(38,50,56,.25);
+    }
+    #appRoot input[type="range"]:focus-visible::-moz-range-thumb {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(38,50,56,.25);
+    }
+
+    /* ===== Per-slider TRACK IMAGES (both WebKit & Firefox) ===== */
+    #appRoot #background::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/colour_zes2mh.png'); }
+    #appRoot #brushColor::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/brightness_clear_z6urk1.png'); }
+    #appRoot #occludeCenter::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/centre_clear_yssx9k.png'); }
+    #appRoot #occludeEdge::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/edge_clear_jbudwf.png'); }
+    #appRoot #blur::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/blur_clear_v2_j4ntub.png'); }
+    #appRoot #thickness::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/thickness_clear_kzsa5m.png'); }
+
+    #appRoot #background::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/colour_zes2mh.png'); }
+    #appRoot #brushColor::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/brightness_clear_z6urk1.png'); }
+    #appRoot #occludeCenter::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/centre_clear_yssx9k.png'); }
+    #appRoot #occludeEdge::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/edge_clear_jbudwf.png'); }
+    #appRoot #blur::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/blur_clear_v2_j4ntub.png'); }
+    #appRoot #thickness::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/thickness_clear_kzsa5m.png'); }
+
+    /* ===== Saving & Dev overlays (unchanged; included for completeness) ===== */
+    #savingOverlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.25);
+      display: none; z-index: 9999;
+    }
+    #devConfirm {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; z-index: 9999;
+      align-items: center; justify-content: center;
+    }
+    #devConfirm .panel {
+      background: #fff; color: #111; padding: 16px; border-radius: 12px; width: min(90vw, 520px);
+    }
+    #devConfirm .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+    #devConfirm button { padding: 10px 18px; border: none; border-radius: 10px; }
+    #devConfirm .cancel { background: #ddd; }
+    #devConfirm .ok { background: #333; color: #fff; }
+
+    /* ===== Tutorial helpers (scoped) ===== */
+    .tutorial-disabled {
+      pointer-events: none !important;
+      filter: grayscale(100%) opacity(0.35);
+    }
+    /* keep labels legible even when disabled */
+    .tutorial-disabled .label-text { opacity: 0.9; }
+
+    /* In-canvas overlay that never clears the drawing */
+    #tutorialOverlay {
+      position: absolute;
+      inset: 0;
+      display: none;             /* shown per step */
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.45);   /* dims the canvas only */
+      z-index: 10;               /* above canvas, below everything else */
+      padding: 14px;
+    }
+    #tutorialOverlay .card {
+      width: min(86%, 520px);
+      background: #ffffff;
+      color: #222;
+      border-radius: 14px;
+      padding: 16px;
+      text-align: left;
+      line-height: 1.35;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+    }
+    #tutorialOverlay .card h2 {
+      margin: 0 0 8px 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    #tutorialOverlay .card p {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+    }
+    #tutorialOverlay .card .actions {
+      display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px;
+    }
+    #tutorialOverlay .card button {
+      border: 1px solid #ccc; background: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px;
+    }
+
+    /* Bottom "Next" button (tablet-friendly) */
+    #tutorialNextWrap {
+      position: sticky;  /* stays near bottom of viewport/content block */
+      bottom: 8px;
+      display: none;     /* appears after first Try it Yourself */
+      width: 100%;
+      z-index: 5;
+    }
+    #tutorialNext {
+      display: block;
+      margin: 8px auto 0 auto;
+      width: min(540px, 92vw);
+      padding: 12px 16px;
+      font-size: 16px;
+      border-radius: 12px;
+      border: 1px solid #aaa;
+      background: #fff;
+    }
   </style>
 </head>
 
@@ -110,30 +283,43 @@
         <div id="appRoot">
           <div id="viewport">
             <canvas id="drawingCanvas" width="1024" height="1024"></canvas>
+
+            <!-- In-canvas tutorial overlay (does NOT erase drawing) -->
+            <div id="tutorialOverlay" aria-hidden="true">
+              <div class="card">
+                <h2 id="tutTitle">tutorial</h2>
+                <p id="tutMsg">welcome and drawing canvas placeholder</p>
+                <div class="actions">
+                  <button id="tutTry">try it yourself</button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="controls">
+            <!-- Row 1 -->
             <div class="row space-between">
-              <div class="slider-group">
+              <div class="slider-group" id="groupBackground">
                 <span class="label-text">background colour</span>
                 <input type="range" id="background" min="0" max="255" value="255"/>
               </div>
               <div class="divider"></div>
               <button id="swapColors">swap colours</button>
               <div class="divider"></div>
-              <div class="slider-group">
+              <div class="slider-group" id="groupBrushColor">
                 <span class="label-text">brush colour</span>
                 <input type="range" id="brushColor" min="0" max="255" value="0"/>
               </div>
             </div>
 
+            <!-- Row 2 -->
             <div class="row">
               <div style="flex:1; display:flex; flex-direction:column; gap:12px;">
                 <div class="slider-group" style="display:none;">
                   <span class="label-text">center fade</span>
                   <input type="range" id="occludeCenter" min="-1" max="1" step="0.01" value="0"/>
                 </div>
-                <div class="slider-group">
+                <div class="slider-group" id="groupBlur">
                   <span class="label-text">brush softness</span>
                   <input type="range" id="blur" min="0" max="60" step="0.1" value="0"/>
                 </div>
@@ -146,15 +332,16 @@
                   <span class="label-text">edge fade</span>
                   <input type="range" id="occludeEdge" min="-1" max="1" step="0.01" value="0"/>
                 </div>
-                <div class="slider-group">
+                <div class="slider-group" id="groupThickness">
                   <span class="label-text">brush size</span>
                   <input type="range" id="thickness" min="1" max="60" value="20"/>
                 </div>
               </div>
             </div>
 
+            <!-- Row 3: tools -->
             <div class="tool-row">
-              <button data-tool="draw" class="selected" id="btnDraw">draw</button>
+              <button data-tool="draw" id="btnDraw" class="selected">draw</button>
               <button data-tool="erase" id="btnErase">erase</button>
               <div class="divider"></div>
               <button data-tool="move" id="btnMove">move</button>
@@ -162,6 +349,7 @@
               <button id="flipH">flip</button>
             </div>
 
+            <!-- Row 4: actions -->
             <div class="actions">
               <button id="undo">undo</button>
               <button id="redo">redo</button>
@@ -169,30 +357,15 @@
               <div class="divider"></div>
               <button id="saveButton">finish</button>
             </div>
+
             <hr/>
 
             <div class="actions" id="devToolsRow"></div>
           </div>
-        </div>
 
-        <!-- iPad-safe tutorial layer: masks + dialog + next -->
-        <div id="tutorialLayer" aria-hidden="true">
-          <div id="maskLayer" aria-hidden="true"></div>
-
-          <div id="dialogLayer" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle" aria-describedby="tutorialBody">
-            <div class="dialog-card">
-              <h2 id="tutorialTitle">Welcome</h2>
-              <div id="tutorialBody" class="body">welcome and drawing canvas placeholder</div>
-              <div class="dialog-actions">
-                <button id="tutorialTry" class="btn">try it yourself</button>
-              </div>
-            </div>
-          </div>
-
-          <div id="footerLayer">
-            <div id="footerInner">
-              <button id="tutorialNext">next</button>
-            </div>
+          <!-- Tutorial "Next" appears near bottom after first Try -->
+          <div id="tutorialNextWrap">
+            <button id="tutorialNext">next</button>
           </div>
         </div>
 
@@ -209,16 +382,20 @@
 
       </div>
     </div>
-    <div class="footer"><div class="button-bar"></div></div>
+
+    <div class="footer">
+      <div class="button-bar"></div>
+    </div>
   </div>
 
-  <!-- Tutorial build -->
+  <!-- Swap your previous script include for this one -->
   <script src="interface_demo.js"></script>
 
+  <!-- Footer/dev wiring kept identical to your original -->
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      const params = (window.VE && VE.parseParams) ? VE.parseParams() : {};
-      const dev = (window.VE && VE.hasDev) ? VE.hasDev(params) : false;
+      const params = VE.parseParams();
+      const dev = VE.hasDev(params);
 
       const back = document.getElementById("backBtn");
       const next = document.getElementById("nextBtn");
@@ -232,7 +409,8 @@
 
       next?.addEventListener("click", () => {
         if (!dev) return;
-        document.getElementById("devConfirm").style.display = "flex";
+        const dlg = document.getElementById("devConfirm");
+        dlg.style.display = "flex";
       });
       document.getElementById("devCancel")?.addEventListener("click", () => {
         document.getElementById("devConfirm").style.display = "none";
@@ -240,16 +418,22 @@
       document.getElementById("devOk")?.addEventListener("click", () => {
         document.getElementById("devConfirm").style.display = "none";
         const r = VE.nextRoute("drawing", params);
-        VE.goto(r.page, r.params);
+        VE.goto(r.page, r.params); // dev: proceed without saving
       });
 
       const devRow = document.getElementById("devToolsRow");
       if (devRow) devRow.style.display = dev ? "" : "none";
 
-      window.__VE_showSaving = function(){ const o = document.getElementById("savingOverlay"); if (o) o.style.display = "block"; };
-      window.__VE_hideSaving = function(){ const o = document.getElementById("savingOverlay"); if (o) o.style.display = "none"; };
+      window.__VE_showSaving = function(){
+        const o = document.getElementById("savingOverlay");
+        if (o) o.style.display = "block";
+      };
+      window.__VE_hideSaving = function(){
+        const o = document.getElementById("savingOverlay");
+        if (o) o.style.display = "none";
+      };
 
-      VE?.renderDevFooter?.(params, dev ? "drawing (tutorial dev)" : "");
+      VE.renderDevFooter(params, dev ? "drawing (dev)" : "");
     });
   </script>
 </body>
