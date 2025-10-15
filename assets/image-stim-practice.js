@@ -99,11 +99,18 @@
       VE.bindNavForPage("image-stim-practice", {});
     }
     if (window.VE && VE.setupNavVisibility) {
-      // Hide Back in experiment (allowBack:false); Next only visible in dev
+      // Hide Back in experiment (allowBack:false)
       VE.setupNavVisibility({}, { allowBack: false });
-      const dev = VE.hasDev ? VE.hasDev({}) : false;
+
+      // Check m=1 in query params
+      const params = VE.parseParams ? VE.parseParams() : {};
+      const showNav = params.m === "1";
+
+      const backBtn = document.getElementById("backBtn");
       const nextBtn = document.getElementById("nextBtn");
-      if (nextBtn) nextBtn.style.display = dev ? "" : "none";
+
+      if (backBtn) backBtn.style.display = showNav ? "" : "none";
+      if (nextBtn) nextBtn.style.display = showNav ? "" : "none";
     }
 
     // Validate config
