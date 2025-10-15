@@ -14,14 +14,31 @@
     .footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px; }
     .button-bar { display: flex; gap: 12px; justify-content: space-between; }
 
+    /* iPad friendliness */
     html, body {
       -webkit-tap-highlight-color: transparent;
       -webkit-touch-callout: none;
-      touch-action: manipulation; /* allow taps, avoid dbl-tap zoom */
+      touch-action: manipulation; /* avoid dbl-tap zoom */
+    }
+
+    /* ===== Secret reset hotspot (invisible) =====
+       Bottom-right 120x120 area above everything. */
+    #resetHotspot {
+      position: fixed;
+      width: 120px;
+      height: 120px;
+      right: env(safe-area-inset-right, 0);
+      bottom: calc(env(safe-area-inset-bottom, 0) + 4px);
+      z-index: 99999;
+      background: transparent;   /* completely invisible */
+      /* no layout impact, no pointer cursor */
     }
   </style>
 </head>
 <body data-page="xx-template">
+  <!-- Invisible admin-only hotspot -->
+  <div id="resetHotspot" aria-hidden="true"></div>
+
   <div class="page">
     <div class="content">
       <div class="inner">
@@ -94,92 +111,129 @@
     })();
 
     // ============================
-    // Secret gesture (tablet-first)
-    // Tap Above → Below → Above → Below relative to the WAIT block
+    // Secret reset: two-finger long-press
+    // Hotspot: bottom-right 120x120 area
+    // Hold 2 fingers steady for HOLD_MS
+    // Fallback: 7 taps in 4s
     // ============================
-    (function initSecretGesture() {
-      const REQUIRED = ["above", "below", "above", "below"];
-      const WINDOW_MS = 8000;
-      let progress = 0;
-      let timer = null;
+    (function initSecretReset() {
+      const hotspot = document.getElementById('resetHotspot');
+      if (!hotspot) return;
 
-      const waitWrap = document.querySelector(".wait-wrap");
-      const footer = document.querySelector(".footer");
+      const HOLD_MS = 1500;             // long-press duration
+      const MAX_MOVE = 18;              // px per finger
+      const REQUIRED_TOUCHES = 2;       // two-finger hold
+      const TAP_FALLBACK_COUNT = 7;     // rapid taps fallback
+      const TAP_FALLBACK_WINDOW = 4000; // ms
 
-      if (!waitWrap) return;
+      let holdTimer = null;
+      let startPositions = new Map();   // touchId -> {x,y}
+      let activeIds = new Set();
+      let tapCount = 0;
+      let tapWindowTimer = null;
 
-      function resetSeq() {
-        progress = 0;
-        if (timer) { clearTimeout(timer); timer = null; }
-      }
-      function armWindow() {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(resetSeq, WINDOW_MS);
-      }
-
-      function classifyTap(clientY) {
-        const rect = waitWrap.getBoundingClientRect();
-        if (clientY < rect.top) return "above";
-        if (clientY > rect.bottom) return "below";
-        return "inside";
+      function resetHold() {
+        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+        startPositions.clear();
+        activeIds.clear();
       }
 
-      function onPoint(ev) {
-        // Ignore taps that originate on the footer (to avoid accidental triggers)
-        const target = ev.target;
-        if (footer && (target === footer || target.closest(".footer"))) return;
+      function resetTaps() {
+        tapCount = 0;
+        if (tapWindowTimer) { clearTimeout(tapWindowTimer); tapWindowTimer = null; }
+      }
 
-        // Prefer touch points for accuracy on iPad
-        let clientY;
-        if (ev instanceof TouchEvent) {
-          if (ev.touches.length > 1) return; // ignore multi-touch
-          clientY = ev.touches[0]?.clientY ?? ev.changedTouches[0]?.clientY;
-        } else {
-          clientY = ev.clientY;
+      function successReset() {
+        resetHold();
+        resetTaps();
+        // Navigate to /vizex-tutorial/ base without query params
+        const path = location.pathname;
+        const m = path.match(/^(.*\/vizex-tutorial\/)/);
+        const base = location.origin + (m ? m[1] : path.replace(/[^/]*$/, ''));
+        location.replace(base);
+      }
+
+      function touchesDistanceOK(ev) {
+        for (const t of Array.from(ev.touches)) {
+          if (!activeIds.has(t.identifier)) continue; // ignore if not one of our tracked
+          const start = startPositions.get(t.identifier);
+          if (!start) continue;
+          const dx = t.clientX - start.x;
+          const dy = t.clientY - start.y;
+          if ((dx*dx + dy*dy) > (MAX_MOVE*MAX_MOVE)) return false;
         }
-        if (clientY == null) return;
+        return true;
+      }
 
-        const where = classifyTap(clientY);
-        if (where === "inside") {
-          // Tapping directly on the WAIT block doesn't count; reset grace.
-          resetSeq();
-          return;
-        }
+      function onTouchStart(ev) {
+        // Only consider touches that start on the hotspot
+        // Prevent default here to avoid any iOS zoom/callout
+        ev.preventDefault();
 
-        if (REQUIRED[progress] === where) {
-          if (progress === 0) armWindow();
-          progress += 1;
-
-          if (progress >= REQUIRED.length) {
-            // Success → go to /vizex-tutorial/ root with NO query params.
-            const path = location.pathname;
-            const m = path.match(/^(.*\/vizex-tutorial\/)/);
-            const base = location.origin + (m ? m[1] : path.replace(/[^/]*$/, ''));
-            location.replace(base);
-            return;
+        // If starting a new gesture, clear old state
+        if (ev.touches.length >= REQUIRED_TOUCHES && activeIds.size === 0) {
+          // Track the first REQUIRED_TOUCHES touches that are on the hotspot
+          for (let i = 0; i < ev.touches.length && activeIds.size < REQUIRED_TOUCHES; i++) {
+            const t = ev.touches[i];
+            activeIds.add(t.identifier);
+            startPositions.set(t.identifier, { x: t.clientX, y: t.clientY });
           }
-        } else {
-          // Wrong side; restart, but allow immediate restart if first matches
-          resetSeq();
-          if (REQUIRED[0] === where) {
-            progress = 1;
-            armWindow();
+
+          if (activeIds.size === REQUIRED_TOUCHES) {
+            if (holdTimer) clearTimeout(holdTimer);
+            holdTimer = setTimeout(successReset, HOLD_MS);
+          }
+        }
+
+        // Fallback: 7 rapid taps
+        if (ev.touches.length === 1) {
+          tapCount += 1;
+          if (!tapWindowTimer) {
+            tapWindowTimer = setTimeout(resetTaps, TAP_FALLBACK_WINDOW);
+          }
+          if (tapCount >= TAP_FALLBACK_COUNT) {
+            successReset();
           }
         }
       }
 
-      // Use pointer events where available; fall back to touch/click.
+      function onTouchMove(ev) {
+        // If we are in a hold, verify both tracked touches haven’t moved too far
+        if (activeIds.size === REQUIRED_TOUCHES && holdTimer) {
+          if (!touchesDistanceOK(ev)) {
+            resetHold();
+          }
+        }
+      }
+
+      function onTouchEnd(ev) {
+        // If any tracked finger lifts before timer fires → cancel
+        for (const changed of Array.from(ev.changedTouches)) {
+          if (activeIds.has(changed.identifier)) {
+            resetHold();
+            break;
+          }
+        }
+        // Note: taps fallback handled by start/end counts + timer window
+      }
+
+      // Attach listeners specifically to the hotspot
+      hotspot.addEventListener('touchstart', onTouchStart, { passive: false });
+      hotspot.addEventListener('touchmove',  onTouchMove,  { passive: false });
+      hotspot.addEventListener('touchend',   onTouchEnd,   { passive: false });
+      hotspot.addEventListener('touchcancel', onTouchEnd,  { passive: false });
+
+      // Also support PointerEvents (desktop testing), but tablet uses touch*
       if (window.PointerEvent) {
-        // On iPadOS Safari 17+, pointerdown works reliably.
-        window.addEventListener("pointerdown", onPoint, { passive: true });
-      } else {
-        window.addEventListener("touchstart", onPoint, { passive: true });
-        window.addEventListener("mousedown", onPoint, { passive: true });
+        hotspot.addEventListener('pointerdown', (e) => {
+          // Simulate tap fallback with pointer on desktop
+          tapCount += 1;
+          if (!tapWindowTimer) {
+            tapWindowTimer = setTimeout(resetTaps, TAP_FALLBACK_WINDOW);
+          }
+          if (tapCount >= TAP_FALLBACK_COUNT) successReset();
+        }, { passive: true });
       }
-
-      // Recompute sequence if layout changes significantly (orientation change)
-      window.addEventListener("orientationchange", resetSeq, { passive: true });
-      window.addEventListener("resize", resetSeq, { passive: true });
     })();
   </script>
 </body>
