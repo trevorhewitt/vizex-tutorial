@@ -6,31 +6,111 @@
   <title>Drawing Guidelines Quiz — The Vision Experiment</title>
   <link rel="stylesheet" href="assets/style.css"/>
   <style>
-    .page { max-width: 900px; margin: 0 auto; padding: 24px; }
-    .footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px; }
+    /* ---------- Layout scalars tuned for iPad/tablets ---------- */
+    :root{
+      /* Space reserved for fixed footer buttons (adjust if your theme differs) */
+      --footer-h: 76px; /* button bar + padding */
+      --outer-pad: 20px;
+
+      /* Image height caps to keep everything above the fold */
+      --stim-max-h: 28svh;  /* ~50% of previous */
+      --choice-max-h: 18svh;/* ~75% of previous */
+      --img-br: 12px;
+
+      --gap-sm: 8px;
+      --gap-md: 12px;
+      --gap-lg: 16px;
+
+      --text-sm: 14px;
+      --text-base: 16px;
+      --title: clamp(18px, 2.2vw, 24px);
+    }
+
+    /* Page container: leave room for fixed footer, avoid scroll cut-offs */
+    .page { 
+      max-width: 900px; 
+      margin: 0 auto; 
+      padding: var(--outer-pad); 
+      padding-bottom: calc(var(--outer-pad) + var(--footer-h) + env(safe-area-inset-bottom, 0px));
+    }
+
+    .footer { 
+      position: fixed; 
+      left: 0; right: 0; bottom: 0; 
+      padding: 12px 16px; 
+      padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+      background: var(--bg, #777777); /* matches site theme so it doesn’t obscure content visually */
+    }
     .button-bar { display: flex; gap: 12px; justify-content: space-between; }
 
-    .quiz-wrap { display: grid; gap: 16px; }
-    .guideline-header { margin-bottom: 4px; }
-    .guideline-header h1 { margin: 0; }
-    .guideline-text p { margin: 0.5em 0; }
+    /* ---------- Quiz layout ---------- */
+    .quiz-wrap { 
+      display: grid; 
+      gap: var(--gap-lg);
+
+      /* Force content to fit into the visible area accounting for footer */
+      min-height: calc(100svh - var(--footer-h) - env(safe-area-inset-bottom, 0px) - (var(--outer-pad) * 2));
+      grid-template-rows: auto auto auto auto auto 1fr; 
+      /* title, counter, text, stimulus, prompt, choices/message share remaining space */
+    }
+
+    .guideline-header { margin-bottom: var(--gap-sm); }
+    .guideline-header h1 { margin: 0; font-size: var(--title); line-height: 1.2; }
+    .counter { font-size: var(--text-sm); opacity: 0.75; }
+
+    .guideline-text p { margin: 0.4em 0; font-size: var(--text-base); }
 
     .stimulus-wrap { display: grid; place-items: center; }
-    .stimulus-wrap img { max-width: 100%; height: auto; }
+    .stimulus-wrap img { 
+      max-width: 100%; 
+      height: auto; 
+      max-height: var(--stim-max-h); 
+      object-fit: contain; 
+      display: block;
+    }
 
-    .choice-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-    .choice { display: grid; gap: 8px; }
-    .choice img { width: 100%; height: auto; border: 6px solid transparent; border-radius: 12px; user-select: none; }
-    .choice img[role="button"] { cursor: pointer; }
-    .choice-label { text-align: center; font-size: 14px; opacity: 0.8; }
+    .prompt { 
+      margin: 0; 
+      font-weight: 600; 
+      font-size: var(--text-base);
+    }
 
-    .prompt { margin-top: 4px; font-weight: 600; }
+    /* Choices in a compact row that still looks good on narrow screens */
+    .choice-wrap { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr; 
+      gap: var(--gap-md); 
+      align-items: start; 
+    }
 
-    .msgbox { min-height: 2.5em; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,0.04); }
-    .counter { font-size: 14px; opacity: 0.75; }
+    .choice { display: grid; gap: var(--gap-sm); align-content: start; }
+    .choice img { 
+      width: 100%; 
+      height: auto; 
+      max-height: var(--choice-max-h); 
+      object-fit: contain; 
+      border: 6px solid transparent; 
+      border-radius: var(--img-br); 
+      user-select: none; 
+      cursor: pointer;
+    }
+    .choice-label { text-align: center; font-size: var(--text-sm); opacity: 0.8; }
 
+    .msgbox { 
+      min-height: 2.2em; 
+      padding: 8px 10px; 
+      border-radius: 8px; 
+      background: rgba(0,0,0,0.04);
+      font-size: var(--text-base);
+    }
+
+    /* ---------- Small screens: stack choices; keep within viewport ---------- */
     @media (max-width: 720px){
       .choice-wrap { grid-template-columns: 1fr; }
+      :root{
+        --stim-max-h: 26svh;
+        --choice-max-h: 18svh;
+      }
     }
   </style>
 </head>
