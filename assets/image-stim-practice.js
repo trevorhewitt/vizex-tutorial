@@ -13,7 +13,7 @@
   // - drawPage: where to send the participant after "Begin drawing" is clicked
   const PRACTICE_CONFIG = {
     p1: {
-      imageSrc: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Woman_teaching_geometry.jpg/800px-Woman_teaching_geometry.jpg",
+      imageSrc: "https://universityofsussex.eu.qualtrics.com/ControlPanel/Graphic.php?IM=IM_kUX0N7RJnwpy4UV",
       imageAlt: "Practice 1 image (pre-selected)",
       drawPage: "practice-1-draw.html"
     },
