@@ -330,7 +330,7 @@
     redraw();
   });
 
-  $('#saveButton').addEventListener('click', ()=>{ location.href = 'nextpage.html'; });
+  $('#saveButton').addEventListener('click', ()=>{ location.href = '05_quizIntro.html'; });
 
   /* Pointer support */
   canvas.addEventListener('mousedown', (e)=>{
