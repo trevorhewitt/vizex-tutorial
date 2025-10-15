@@ -10,6 +10,10 @@
   <!-- Practice controller (shared for both practice pages) -->
   <script src="assets/image-stim-practice.js" defer></script>
   <style>
+    /* Always hide footer navigation buttons for practice pages */
+    #backBtn, #nextBtn {
+    display: none !important;
+    }
     /* Centering + fixed stimulus sizing */
     .center-wrap {
       min-height: 60vh;
