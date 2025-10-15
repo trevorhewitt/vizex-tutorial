@@ -9,36 +9,56 @@
   <title>XX — Template</title>
   <link rel="stylesheet" href="assets/style.css"/>
   <style>
+    /* Keep original content look */
     .page { max-width: 900px; margin: 0 auto; padding: 24px; }
     .wait-wrap { margin-top:16px; }
-    .footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px; }
-    .button-bar { display: flex; gap: 12px; justify-content: space-between; }
 
-    /* iPad friendliness */
+    /* Remove the old footer/nav entirely (no Next/Back) */
+
     html, body {
       -webkit-tap-highlight-color: transparent;
       -webkit-touch-callout: none;
-      touch-action: manipulation; /* avoid dbl-tap zoom */
+      touch-action: manipulation;
+      margin: 0;
+      height: 100%;
     }
 
-    /* ===== Secret reset hotspot (invisible) =====
-       Bottom-right 120x120 area above everything. */
-    #resetHotspot {
+    /* Blank admin buttons bar */
+    .secret-bar {
       position: fixed;
-      width: 120px;
-      height: 120px;
-      right: env(safe-area-inset-right, 0);
-      bottom: calc(env(safe-area-inset-bottom, 0) + 4px);
-      z-index: 99999;
-      background: transparent;   /* completely invisible */
-      /* no layout impact, no pointer cursor */
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding:
+        10px
+        calc(10px + env(safe-area-inset-right, 0))
+        calc(10px + env(safe-area-inset-bottom, 0))
+        calc(10px + env(safe-area-inset-left, 0));
+      background: transparent; /* no visual “bar” */
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      z-index: 9999;
+    }
+
+    .secret-btn {
+      height: 56px;             /* big, finger-friendly */
+      border-radius: 12px;
+      border: 1px solid rgba(0,0,0,0.15);
+      background: rgba(0,0,0,0.06);  /* visible but neutral; no text */
+      outline: none;
+    }
+    .secret-btn:active {
+      filter: brightness(0.95);
+    }
+
+    /* Optional: subtle focus style if keyboard is used during dev */
+    .secret-btn:focus-visible {
+      box-shadow: 0 0 0 3px rgba(0, 128, 255, 0.3);
     }
   </style>
 </head>
 <body data-page="xx-template">
-  <!-- Invisible admin-only hotspot -->
-  <div id="resetHotspot" aria-hidden="true"></div>
-
   <div class="page">
     <div class="content">
       <div class="inner">
@@ -53,52 +73,93 @@
     </div>
   </div>
 
-  <div class="footer">
-    <div class="button-bar">
-      <button id="backBtn" class="secondary">Back</button>
-      <button id="nextBtn" class="primary">Next</button>
-    </div>
+  <!-- Three visible, unlabeled buttons -->
+  <div class="secret-bar" aria-hidden="true">
+    <button class="secret-btn" data-key="L" aria-hidden="true"></button>
+    <button class="secret-btn" data-key="M" aria-hidden="true"></button>
+    <button class="secret-btn" data-key="R" aria-hidden="true"></button>
   </div>
 
   <script>
     // ============================
-    // NAV (unchanged appearance)
+    // Secret reset: L, L, R, L, L, M within WINDOW_MS
     // ============================
-    const NEXT_PAGE = "XX_set_next.html";
-    const BACK_PAGE = "XX_set_back.html";
+    (function initSecretSequence() {
+      const SEQ = ["L","L","R","L","L","M"];
+      const WINDOW_MS = 10000;
 
-    function parseQuery() {
-      const q = new URLSearchParams(location.search);
-      return Object.fromEntries(q.entries());
-    }
-    function baseQueryString() {
-      const { p, n, m } = parseQuery();
-      const q = new URLSearchParams();
-      if (p) q.set("p", p);
-      if (n) q.set("n", n);
-      q.set("m", (m === "1" ? "1" : "0"));
-      return "?" + q.toString();
-    }
+      const buttons = Array.from(document.querySelectorAll(".secret-btn"));
+      if (buttons.length !== 3) return;
 
-    (function initNav() {
-      const back = document.getElementById("backBtn");
-      const next = document.getElementById("nextBtn");
-      if (back) back.style.visibility = "hidden";
-      if (next) next.style.visibility = "hidden";
+      // Map order visually: Left, Middle, Right
+      const [leftBtn, middleBtn, rightBtn] = buttons;
+      leftBtn.dataset.key = "L";
+      middleBtn.dataset.key = "M";
+      rightBtn.dataset.key = "R";
 
-      next?.addEventListener("click", () => {
-        if (!NEXT_PAGE) return;
-        location.href = NEXT_PAGE + baseQueryString();
+      let idx = 0;
+      let timer = null;
+
+      function resetSeq() {
+        idx = 0;
+        if (timer) { clearTimeout(timer); timer = null; }
+      }
+      function armWindow() {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(resetSeq, WINDOW_MS);
+      }
+      function successReset() {
+        resetSeq();
+        // Go to /vizex-tutorial/ base with NO query params
+        const path = location.pathname;
+        const match = path.match(/^(.*\/vizex-tutorial\/)/);
+        const base = location.origin + (match ? match[1] : path.replace(/[^/]*$/, ""));
+        location.replace(base);
+      }
+
+      function handlePress(which) {
+        if (SEQ[idx] === which) {
+          if (idx === 0) armWindow();
+          idx += 1;
+          if (idx >= SEQ.length) {
+            successReset();
+          }
+        } else {
+          // restart; if the current press matches the first step, start at 1
+          resetSeq();
+          if (SEQ[0] === which) {
+            idx = 1;
+            armWindow();
+          }
+        }
+      }
+
+      // Use pointer and touch for iPad reliability
+      function onActivate(e) {
+        // Avoid iOS dbl-tap zoom interference on buttons
+        e.preventDefault();
+        const btn = e.currentTarget;
+        const key = btn?.dataset?.key;
+        if (!key) return;
+        handlePress(key);
+      }
+
+      const optsActive = { passive: false };
+      buttons.forEach(btn => {
+        if (window.PointerEvent) {
+          btn.addEventListener("pointerdown", onActivate, optsActive);
+        }
+        btn.addEventListener("touchstart", onActivate, optsActive);
+        btn.addEventListener("mousedown", onActivate, optsActive);
       });
 
-      back?.addEventListener("click", () => {
-        if (!BACK_PAGE) return;
-        location.href = BACK_PAGE + baseQueryString();
-      });
+      // Clean up sequence if the page is resized/orientation-changed
+      window.addEventListener("orientationchange", resetSeq, { passive: true });
+      window.addEventListener("resize", resetSeq, { passive: true });
     })();
 
     // ============================
-    // iOS zoom suppression
+    // (Optional) iOS zoom suppression, just in case
     // ============================
     document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
     (function preventIOSDoubleTapZoom() {
@@ -108,132 +169,6 @@
         if (now - lastTouchEnd <= 350) e.preventDefault();
         lastTouchEnd = now;
       }, { passive: false });
-    })();
-
-    // ============================
-    // Secret reset: two-finger long-press
-    // Hotspot: bottom-right 120x120 area
-    // Hold 2 fingers steady for HOLD_MS
-    // Fallback: 7 taps in 4s
-    // ============================
-    (function initSecretReset() {
-      const hotspot = document.getElementById('resetHotspot');
-      if (!hotspot) return;
-
-      const HOLD_MS = 1500;             // long-press duration
-      const MAX_MOVE = 18;              // px per finger
-      const REQUIRED_TOUCHES = 2;       // two-finger hold
-      const TAP_FALLBACK_COUNT = 7;     // rapid taps fallback
-      const TAP_FALLBACK_WINDOW = 4000; // ms
-
-      let holdTimer = null;
-      let startPositions = new Map();   // touchId -> {x,y}
-      let activeIds = new Set();
-      let tapCount = 0;
-      let tapWindowTimer = null;
-
-      function resetHold() {
-        if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
-        startPositions.clear();
-        activeIds.clear();
-      }
-
-      function resetTaps() {
-        tapCount = 0;
-        if (tapWindowTimer) { clearTimeout(tapWindowTimer); tapWindowTimer = null; }
-      }
-
-      function successReset() {
-        resetHold();
-        resetTaps();
-        // Navigate to /vizex-tutorial/ base without query params
-        const path = location.pathname;
-        const m = path.match(/^(.*\/vizex-tutorial\/)/);
-        const base = location.origin + (m ? m[1] : path.replace(/[^/]*$/, ''));
-        location.replace(base);
-      }
-
-      function touchesDistanceOK(ev) {
-        for (const t of Array.from(ev.touches)) {
-          if (!activeIds.has(t.identifier)) continue; // ignore if not one of our tracked
-          const start = startPositions.get(t.identifier);
-          if (!start) continue;
-          const dx = t.clientX - start.x;
-          const dy = t.clientY - start.y;
-          if ((dx*dx + dy*dy) > (MAX_MOVE*MAX_MOVE)) return false;
-        }
-        return true;
-      }
-
-      function onTouchStart(ev) {
-        // Only consider touches that start on the hotspot
-        // Prevent default here to avoid any iOS zoom/callout
-        ev.preventDefault();
-
-        // If starting a new gesture, clear old state
-        if (ev.touches.length >= REQUIRED_TOUCHES && activeIds.size === 0) {
-          // Track the first REQUIRED_TOUCHES touches that are on the hotspot
-          for (let i = 0; i < ev.touches.length && activeIds.size < REQUIRED_TOUCHES; i++) {
-            const t = ev.touches[i];
-            activeIds.add(t.identifier);
-            startPositions.set(t.identifier, { x: t.clientX, y: t.clientY });
-          }
-
-          if (activeIds.size === REQUIRED_TOUCHES) {
-            if (holdTimer) clearTimeout(holdTimer);
-            holdTimer = setTimeout(successReset, HOLD_MS);
-          }
-        }
-
-        // Fallback: 7 rapid taps
-        if (ev.touches.length === 1) {
-          tapCount += 1;
-          if (!tapWindowTimer) {
-            tapWindowTimer = setTimeout(resetTaps, TAP_FALLBACK_WINDOW);
-          }
-          if (tapCount >= TAP_FALLBACK_COUNT) {
-            successReset();
-          }
-        }
-      }
-
-      function onTouchMove(ev) {
-        // If we are in a hold, verify both tracked touches haven’t moved too far
-        if (activeIds.size === REQUIRED_TOUCHES && holdTimer) {
-          if (!touchesDistanceOK(ev)) {
-            resetHold();
-          }
-        }
-      }
-
-      function onTouchEnd(ev) {
-        // If any tracked finger lifts before timer fires → cancel
-        for (const changed of Array.from(ev.changedTouches)) {
-          if (activeIds.has(changed.identifier)) {
-            resetHold();
-            break;
-          }
-        }
-        // Note: taps fallback handled by start/end counts + timer window
-      }
-
-      // Attach listeners specifically to the hotspot
-      hotspot.addEventListener('touchstart', onTouchStart, { passive: false });
-      hotspot.addEventListener('touchmove',  onTouchMove,  { passive: false });
-      hotspot.addEventListener('touchend',   onTouchEnd,   { passive: false });
-      hotspot.addEventListener('touchcancel', onTouchEnd,  { passive: false });
-
-      // Also support PointerEvents (desktop testing), but tablet uses touch*
-      if (window.PointerEvent) {
-        hotspot.addEventListener('pointerdown', (e) => {
-          // Simulate tap fallback with pointer on desktop
-          tapCount += 1;
-          if (!tapWindowTimer) {
-            tapWindowTimer = setTimeout(resetTaps, TAP_FALLBACK_WINDOW);
-          }
-          if (tapCount >= TAP_FALLBACK_COUNT) successReset();
-        }, { passive: true });
-      }
     })();
   </script>
 </body>
