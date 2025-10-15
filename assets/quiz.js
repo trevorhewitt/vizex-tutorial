@@ -1,7 +1,7 @@
 // ============================
 // Configurable navigation
 // ============================
-const NEXT_PAGE = "placeholder.html";   // where to go after finishing the quiz
+const NEXT_PAGE = "07_prePracticeWait.html";   // where to go after finishing the quiz
 
 // Preserve selected query params
 function parseQuery() {
