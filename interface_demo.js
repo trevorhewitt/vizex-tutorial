@@ -462,10 +462,10 @@
     { title: "Draw & erase", msg: "These two buttons switch between the draw and erase tools. Try clicking the erase button to select that tool and then erasing part of what you drew.", reveal: ['#btnDraw', '#btnErase'] },
 
     // step 6: Move tool
-    { title: "Move", msg: "This button lets you move your drawing. Click it and drag to reposition your image.", reveal: ['#btnMove'] },
+    { title: "Move", msg: "This button lets you move your drawing. Click it and drag to reposition your image. If you use two fingers, you can also rotate and zoom in or out.", reveal: ['#btnMove'] },
 
     // step 7: Two-finger gesture (no new UI; instructions only)
-    { title: "Two-finger move", msg: "If you use two fingers, you can also rotate and zoom in or out.", reveal: [] },
+    //{ title: "Two-finger move", msg: "If you use two fingers, you can also rotate and zoom in or out.", reveal: [] },
 
     // step 8: Flip tool
     { title: "Flip", msg: "Try flipping your image from left to right with the “Flip” button.", reveal: ['#flipH'] },
