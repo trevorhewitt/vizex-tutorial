@@ -12,16 +12,76 @@
     .button-bar { display: flex; gap: 12px; justify-content: space-between; }
   </style>
 </head>
+<script>
+(function () {
+  // Config
+  const REQUIRED_WAITS = 3;
+  const WINDOW_MS = 8000;     // complete the sequence within 8s
+  const AFTER_ARM_MS = 4000;  // header click within 4s after the 3rd "Wait"
+
+  // Find targets without changing the DOM/appearance
+  const waitButtons = Array.from(document.querySelectorAll('button, a, [role="button"]'))
+    .filter(el => (el.textContent || '').trim().toLowerCase() === 'wait');
+  const headerEl = document.querySelector('h1, header h1, .header h1');
+
+  if (!headerEl || waitButtons.length === 0) return; // If your page doesn't have them, do nothing
+
+  let count = 0;
+  let windowTimer = null;
+  let armed = false;
+  let armedTimer = null;
+
+  function resetAll() {
+    count = 0;
+    armed = false;
+    if (windowTimer) { clearTimeout(windowTimer); windowTimer = null; }
+    if (armedTimer)  { clearTimeout(armedTimer);  armedTimer  = null; }
+  }
+
+  function startWindowTimer() {
+    if (windowTimer) clearTimeout(windowTimer);
+    windowTimer = setTimeout(resetAll, WINDOW_MS);
+  }
+
+  function onWaitClick() {
+    // Start/reset the overall window
+    if (count === 0) startWindowTimer();
+
+    count += 1;
+
+    if (count >= REQUIRED_WAITS) {
+      // Arm the header step
+      armed = true;
+      if (armedTimer) clearTimeout(armedTimer);
+      armedTimer = setTimeout(resetAll, AFTER_ARM_MS);
+    }
+  }
+
+  function onHeaderClick() {
+    if (!armed) return;
+    // Success — go to the tutorial root with NO query params
+    // Compute base like: https://…/vizex-tutorial/
+    const basePath = location.pathname.endsWith('/') ? location.pathname : location.pathname.replace(/[^/]+$/, '');
+    const target = location.origin + basePath;
+    // Hard reset (no history params lingering)
+    location.replace(target);
+  }
+
+  waitButtons.forEach(btn => btn.addEventListener('click', onWaitClick, { passive: true }));
+  headerEl.addEventListener('click', onHeaderClick, { passive: true });
+})();
+</script>
 <body data-page="xx-template">
     <div class="page">
     <div class="content">
         <div class="inner">
-        <h1>Placeholder Title</h1>
-        <p>This is placeholder text. Replace with your page instructions/content.</p>
+        <h1>You have now completed the practice trials. </h1>
+        <p>Well done</p>
 
         <div class="wait-wrap" style="margin-top:16px;">
             <h1>WAIT</h1>
         </div>
+        <p>Please wait a moment for the rest of the participants to finish as well.</p>
         </div>
     </div>
     </div>
