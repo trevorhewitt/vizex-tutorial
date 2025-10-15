@@ -447,37 +447,37 @@
   // All UI elements start disabled (greyed) except the canvas/viewport.
   const revealMap = [
     // step 1: Canvas intro (no new controls)
-    { title: "welcome", msg: "welcome and drawing canvas placeholder", reveal: [] },
+    { title: "Welcome to the drawing interface", msg: "The large box at the top is your drawing canvas. You can draw by tapping and dragging. Try this now, then click “Next” when you are ready to continue.", reveal: [] },
 
     // step 2: Colors — background + brush color sliders
-    { title: "colours", msg: "color placeholder", reveal: ['#groupBackground', '#groupBrushColor'] },
+    { title: "Colour sliders", msg: "Below the canvas are two sliders that let you change the colour of the background and your brush strokes. Try adjusting both to see how they affect your drawing.", reveal: ['#groupBackground', '#groupBrushColor'] },
 
     // step 3: Swap colours button
-    { title: "swap colours", msg: "swap colours placeholder", reveal: ['#swapColors'] },
+    { title: "Swap colours", msg: "Use the button in the middle to swap the background and brush colours. Try it now.", reveal: ['#swapColors'] },
 
     // step 4: Brush softness + size sliders
-    { title: "brush", msg: "brush softness and brush size placeholder", reveal: ['#groupBlur', '#groupThickness'] },
+    { title: "Brush softness & size", msg: "The next two sliders let you control how blurry the image is and how large the brush strokes are. Experiment with them to see the difference.", reveal: ['#groupBlur', '#groupThickness'] },
 
     // step 5: Draw + Erase tools
-    { title: "tools", msg: "draw and erase tools placeholder", reveal: ['#btnDraw', '#btnErase'] },
+    { title: "Draw & erase", msg: "These two buttons switch between the draw and erase tools. Try clicking the erase button to select that tool and then erasing part of what you drew.", reveal: ['#btnDraw', '#btnErase'] },
 
     // step 6: Move tool
-    { title: "move tool", msg: "move tool placeholder", reveal: ['#btnMove'] },
+    { title: "Move", msg: "This button lets you move your drawing. Click it and drag to reposition your image.", reveal: ['#btnMove'] },
 
     // step 7: Two-finger gesture (no new UI; instructions only)
-    { title: "two-finger move", msg: "use two fingers to pan/zoom/rotate while in move tool", reveal: [] },
+    { title: "Two-finger move", msg: "If you use two fingers, you can also rotate and zoom in or out.", reveal: [] },
 
     // step 8: Flip tool
-    { title: "flip", msg: "flip tool placeholder", reveal: ['#flipH'] },
+    { title: "Flip", msg: "Try flipping your image from left to right with the “Flip” button.", reveal: ['#flipH'] },
 
     // step 9: Undo/Redo
-    { title: "undo/redo", msg: "undo and redo placeholder", reveal: ['#undo', '#redo'] },
+    { title: "Undo & redo", msg: "You can always undo or redo any action using these buttons.", reveal: ['#undo', '#redo'] },
 
     // step 10: Clear
-    { title: "clear", msg: "clear placeholder", reveal: ['#clear'] },
+    { title: "Clear", msg: "If you want to start over, click “Clear.” You can undo this too, so you won’t lose progress if you press it accidentally.", reveal: ['#clear'] },
 
     // step 11: Finish (Next disappears after this reveal)
-    { title: "finish", msg: "finish placeholder", reveal: ['#saveButton'], final: true },
+    { title: "Finish", msg: "Take a moment to draw something and make sure you understand what each part of the interface does. If anything doesn’t make sense, ask the researchers. When you are ready, click the “finish” button to complete your image.", reveal: ['#saveButton'], final: true },
   ];
 
   const overlay = $('#tutorialOverlay');
