@@ -18,11 +18,13 @@
   </style>
 </head>
 <body data-page="00-params">
-  <div class="page">
-    <h1>Participant Setup</h1>
-    <p>Please enter the participant details below. These values are passed between pages via query parameters.</p>
+<div class="page">
+  <div class="content">
+    <div class="inner">
+      <h1>Participant Setup</h1>
+      <p>Please enter the participant details below. These values are passed between pages via query parameters.</p>
 
-    <form id="paramsForm" autocomplete="off">
+      <form id="paramsForm" autocomplete="off">
       <div class="field">
         <label for="p">Participant code (p)</label>
         <input id="p" name="p" type="text" placeholder="e.g., SXX-001" required/>
@@ -51,8 +53,10 @@
           <button type="submit" id="nextBtn" class="primary">Next</button>
         </div>
       </div>
-    </form>
-  </div>
+        </form>
+        </div>
+    </div>
+    </div>
 
   <script>
     // --- Helpers ---
