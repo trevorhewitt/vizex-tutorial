@@ -13,26 +13,52 @@
   </style>
 </head>
 <body data-page="xx-template">
+    <style>
+        /* Local, page-scoped fixes */
+        .content-inner{
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 16px 20px calc(120px + env(safe-area-inset-bottom)); /* space above fixed footer */
+        display: flex;
+        flex-direction: column;
+        gap: 16px; /* even spacing between text and image */
+        }
+        .hero-img{
+        display: flex;
+        justify-content: center;
+        }
+        .hero-img img{
+        display: block;
+        width: min(100%, 600px); /* responsive, capped at 600px */
+        height: auto;            /* <- prevents warping */
+        object-fit: contain;
+        }
+    </style>
+
     <div class="page">
-    <div class="content">
-        Great - now that you know how to use the drawing interface, let’s talk about how you should use it in the experiment.<br>
-        <br><br>
-        The basic idea is that you want to draw what you saw as litterally as possible.<br>
-        <br><br>
-        <img style="width: 600px; height: 499px;" src="https://universityofsussex.eu.qualtrics.com/CP/Graphic.php?IM=IM_cSz5zBwob4MmV8y"><br>
-        <br><br>
-        It's impossible to do that perfectly, but just try your hardest.<br>
-        <br><br>
-        Click next to see some guidelines for drawing.&nbsp;<br>
-        <br><br>
+        <div class="content">
+        <div class="content-inner">
+            <p>Great — now that you know how to use the drawing interface, let’s talk about how you should use it in the experiment.</p>
+
+            <p>The basic idea is that you want to draw what you saw as literally as possible.</p>
+
+            <figure class="hero-img">
+            <img src="https://universityofsussex.eu.qualtrics.com/CP/Graphic.php?IM=IM_cSz5zBwob4MmV8y" alt="Example drawing guidance">
+            </figure>
+
+            <p>It’s impossible to do that perfectly, but just try your hardest.</p>
+
+            <p>Click Next to see some guidelines for drawing.</p>
+        </div>
+        </div>
     </div>
+
+    <div class="footer">
+        <div class="button-bar">
+        <button id="backBtn" class="secondary">Back</button>
+        <button id="nextBtn" class="primary">Next</button>
+        </div>
     </div>
-  <div class="footer">
-    <div class="button-bar">
-      <button id="backBtn" class="secondary">Back</button>
-      <button id="nextBtn" class="primary">Next</button>
-    </div>
-  </div>
 
   <script>
     // ============================
