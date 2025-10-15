@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <title>Drawing</title>
+  <link rel="stylesheet" href="assets/style.css"/>
+  <script src="assets/util.js" defer></script>
+  <style>
+    /* ===== Drawing App (scoped) — drop-in replacement ===== */
+
+    #appRoot {
+      /* Layout vars */
+      --viewport-size: 550px;       /* visual square side length */
+      --controls-width: 550px;
+
+      /* Slider sizing vars — TWEAK THESE 2 */
+      --slider-track-h: 42px;       /* track height (image area) */
+      --slider-thumb-d: 38px;       /* thumb diameter */
+
+      /* Colors */
+      --thumb-outline: #005197;
+      --divider: #cccccc;
+
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      user-select: none;
+      -webkit-user-select: none;
+      width: 100%;
+    }
+
+    /* ===== Viewport / Canvas ===== */
+    #appRoot #viewport {
+      width: var(--viewport-size);
+      aspect-ratio: 1 / 1;
+      height: auto;
+      position: relative;
+      overflow: hidden;          /* seam guard */
+      border: 6px solid #00c853; /* thicker green border */
+      box-sizing: border-box;
+      background: #f0f0f0;
+      display: flex; align-items: center; justify-content: center;
+      line-height: 0;            /* seam guard */
+      touch-action: none;
+    }
+
+    #appRoot canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;            /* seam guard */
+      vertical-align: top;       /* seam guard */
+      transform: translateZ(0);  /* reduces subpixel hairlines */
+      cursor: crosshair;
+      touch-action: none;
+      user-select: none;
+    }
+
+    /* ===== Controls wrapper ===== */
+    #appRoot .controls {
+      margin: 0 auto;
+      width: var(--controls-width);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      text-transform: lowercase;
+    }
+
+    #appRoot .row { display: flex; gap: 12px; align-items: flex-start; }
+    #appRoot .row.space-between { justify-content: space-between; }
+
+    /* First row: background | swap | brush color
+      Make sliders take most width; button thin */
+    #appRoot .controls .row.space-between > .slider-group {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+    #appRoot #swapColors {
+      flex: 0 0 84px;           /* thin button */
+      height: calc(var(--slider-track-h) + 10px);
+      padding: 0 8px;
+      border-radius: 8px;
+      background: #fff;
+      border: 1px solid #ccc;
+    }
+
+    /* Dividers */
+    #appRoot .divider, #appRoot .col-divider {
+      pointer-events: none;
+      background: var(--divider);
+    }
+    #appRoot .divider { width: 1px; height: 24px; margin: 0 8px; align-self: center; }
+    #appRoot .col-divider { width: 1px; margin: 0 12px; }
+
+    /* Slider groups: label above control */
+    #appRoot .slider-group {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+      min-height: 56px;
+    }
+    #appRoot .label-text { font-size: 0.95rem; line-height: 1.2; text-align: center; }
+
+    /* ===== Buttons ===== */
+    #appRoot .tool-row, #appRoot .actions {
+      display: flex; align-items: center; gap: 8px; text-transform: lowercase;
+    }
+    #appRoot .tool-row button, #appRoot .actions button {
+      flex: 1; padding: 8px; font-size: 14px; background: #fff; border: 1px solid #ccc;
+      border-radius: 10px;
+    }
+    #appRoot .tool-row button.selected, #appRoot .tool-row button.active {
+      background: #ddd; border-color: #888;
+    }
+    #appRoot #flipH { background: #fff; border: 1px solid #ccc; }
+
+    /* ===== Range inputs (shared) ===== */
+    #appRoot input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      background: transparent;   /* avoid Safari extra track */
+      padding: 12px 0;           /* increases hit area without shifting visuals */
+    }
+
+    /* Track — WebKit */
+    #appRoot input[type="range"]::-webkit-slider-runnable-track {
+      height: var(--slider-track-h);
+      border-radius: 999px;
+      background: transparent;  
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: cover;
+    }
+
+    /* Track — Firefox */
+    #appRoot input[type="range"]::-moz-range-track {
+      height: var(--slider-track-h);
+      border-radius: 999px;
+      background: transparent;  
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: cover;
+    }
+
+    /* Thumb — transparent fill, outline only */
+    #appRoot input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: var(--slider-thumb-d);
+      height: var(--slider-thumb-d);
+      border-radius: 50%;
+      background: transparent;
+      border: 3px solid var(--thumb-outline);
+      box-shadow: none;
+      /* Center thumb vertically over thicker track (WebKit honors margin-top) */
+      margin-top: calc((var(--slider-track-h) - var(--slider-thumb-d)) / 2);
+    }
+    #appRoot input[type="range"]::-moz-range-thumb {
+      width: var(--slider-thumb-d);
+      height: var(--slider-thumb-d);
+      border-radius: 50%;
+      background: transparent;
+      border: 3px solid var(--thumb-outline);
+      box-shadow: none;
+    }
+
+    /* Focus ring on thumb without filling it */
+    #appRoot input[type="range"]:focus-visible::-webkit-slider-thumb {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(38,50,56,.25);
+    }
+    #appRoot input[type="range"]:focus-visible::-moz-range-thumb {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(38,50,56,.25);
+    }
+
+    /* ===== Per-slider TRACK IMAGES (both WebKit & Firefox) ===== */
+    #appRoot #background::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/colour_zes2mh.png'); }
+    #appRoot #brushColor::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/brightness_clear_z6urk1.png'); }
+    #appRoot #occludeCenter::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/centre_clear_yssx9k.png'); }
+    #appRoot #occludeEdge::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/edge_clear_jbudwf.png'); }
+    #appRoot #blur::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/blur_clear_v2_j4ntub.png'); }
+    #appRoot #thickness::-webkit-slider-runnable-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/thickness_clear_kzsa5m.png'); }
+
+    #appRoot #background::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/colour_zes2mh.png'); }
+    #appRoot #brushColor::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/brightness_clear_z6urk1.png'); }
+    #appRoot #occludeCenter::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/centre_clear_yssx9k.png'); }
+    #appRoot #occludeEdge::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/edge_clear_jbudwf.png'); }
+    #appRoot #blur::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/blur_clear_v2_j4ntub.png'); }
+    #appRoot #thickness::-moz-range-track { background-image: url('https://res.cloudinary.com/dlginribm/image/upload/v1756743258/thickness_clear_kzsa5m.png'); }
+
+    /* ===== Saving & Dev overlays (unchanged; included for completeness) ===== */
+    #savingOverlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.25);
+      display: none; z-index: 9999;
+    }
+    #devConfirm {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; z-index: 9999;
+      align-items: center; justify-content: center;
+    }
+    #devConfirm .panel {
+      background: #fff; color: #111; padding: 16px; border-radius: 12px; width: min(90vw, 520px);
+    }
+    #devConfirm .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
+    #devConfirm button { padding: 10px 18px; border: none; border-radius: 10px; }
+    #devConfirm .cancel { background: #ddd; }
+    #devConfirm .ok { background: #333; color: #fff; }
+
+  </style>
+</head>
+
+<body data-page="drawing">
+  <div class="page">
+    <div class="content">
+      <div class="inner" id="root">
+        <div id="appRoot">
+          <div id="viewport">
+            <canvas id="drawingCanvas" width="1024" height="1024"></canvas>
+          </div>
+
+          <div class="controls">
+            <div class="row space-between">
+              <div class="slider-group">
+                <span class="label-text">background colour</span>
+                <input type="range" id="background" min="0" max="255" value="255"/>
+              </div>
+              <div class="divider"></div>
+              <button id="swapColors">swap colours</button>
+              <div class="divider"></div>
+              <div class="slider-group">
+                <span class="label-text">brush colour</span>
+                <input type="range" id="brushColor" min="0" max="255" value="0"/>
+              </div>
+            </div>
+
+            <div class="row">
+              <div style="flex:1; display:flex; flex-direction:column; gap:12px;">
+                <div class="slider-group" style="display:none;">
+                  <span class="label-text">center fade</span>
+                  <input type="range" id="occludeCenter" min="-1" max="1" step="0.01" value="0"/>
+                </div>
+                <div class="slider-group">
+                  <span class="label-text">brush softness</span>
+                  <input type="range" id="blur" min="0" max="60" step="0.1" value="0"/>
+                </div>
+              </div>
+
+              <div class="col-divider"></div>
+
+              <div style="flex:1; display:flex; flex-direction:column; gap:12px;">
+                <div class="slider-group" style="display:none;">
+                  <span class="label-text">edge fade</span>
+                  <input type="range" id="occludeEdge" min="-1" max="1" step="0.01" value="0"/>
+                </div>
+                <div class="slider-group">
+                  <span class="label-text">brush size</span>
+                  <input type="range" id="thickness" min="1" max="60" value="20"/>
+                </div>
+              </div>
+            </div>
+
+            <div class="tool-row">
+              <button data-tool="draw" class="selected">draw</button>
+              <button data-tool="erase">erase</button>
+              <div class="divider"></div>
+              <button data-tool="move">move</button>
+              <div class="divider"></div>
+              <button id="flipH">flip</button>
+            </div>
+
+            <div class="actions">
+              <button id="undo">undo</button>
+              <button id="redo">redo</button>
+              <button id="clear">clear</button>
+              <div class="divider"></div>
+              <button id="saveButton">finish</button>
+            </div>
+            <hr/>
+
+            <div class="actions" id="devToolsRow">
+            </div>
+          </div>
+        </div>
+
+        <div id="savingOverlay" aria-hidden="true"></div>
+        <div id="devConfirm" role="dialog" aria-modal="true" aria-labelledby="devConfirmMsg">
+          <div class="panel">
+            <div id="devConfirmMsg">Participant - please click cancel and bring your tablet to the researcher so they can fix this error</div>
+            <div class="actions">
+              <button class="cancel" id="devCancel">Cancel</button>
+              <button class="ok" id="devOk">OK</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="button-bar">
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const params = VE.parseParams();
+      const dev = VE.hasDev(params);
+
+      // Footer nav visibility (dev-only)
+      const back = document.getElementById("backBtn");
+      const next = document.getElementById("nextBtn");
+      back.style.display = dev ? "" : "none";
+      next.style.display = dev ? "" : "none";
+
+      // Back uses normal route
+      back?.addEventListener("click", () => {
+        const r = VE.backRoute("drawing", params);
+        VE.goto(r.page, r.params);
+      });
+
+      // Dev Next: confirm, then skip saving on OK
+      next?.addEventListener("click", () => {
+        if (!dev) return;
+        const dlg = document.getElementById("devConfirm");
+        dlg.style.display = "flex";
+      });
+      document.getElementById("devCancel").addEventListener("click", () => {
+        document.getElementById("devConfirm").style.display = "none";
+      });
+      document.getElementById("devOk").addEventListener("click", () => {
+        document.getElementById("devConfirm").style.display = "none";
+        const r = VE.nextRoute("drawing", params);
+        VE.goto(r.page, r.params); // dev: proceed without saving
+      });
+
+      // Show/hide developer tools row inside app
+      const devRow = document.getElementById("devToolsRow");
+      devRow.style.display = dev ? "" : "none";
+
+      // Helpers for the saving overlay (used by onSave)
+      window.__VE_showSaving = function(){
+        const o = document.getElementById("savingOverlay");
+        if (o) o.style.display = "block";
+      };
+      window.__VE_hideSaving = function(){
+        const o = document.getElementById("savingOverlay");
+        if (o) o.style.display = "none";
+      };
+
+      // Dev footer readout only in dev
+      VE.renderDevFooter(params, dev ? "drawing (dev)" : "");
+    });
+  </script>
+</body>
+</html>

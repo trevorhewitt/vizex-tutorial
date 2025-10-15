@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Practice 1 — Image Stimulus</title>
+  <link rel="stylesheet" href="assets/style.css" />
+  <!-- Utilities (provides window.VE) -->
+  <script src="assets/util.js" defer></script>
+  <!-- Practice controller (shared for both practice pages) -->
+  <script src="assets/image-stim-practice.js" defer></script>
+  <style>
+    /* Centering + fixed stimulus sizing */
+    .center-wrap {
+      min-height: 60vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .stimulus-box {
+      width: 500px; height: 500px;  /* adjust as needed */
+      display: flex; align-items: center; justify-content: center;
+    }
+    .stimulus-box img {
+      width: 100%; height: 100%; object-fit: cover;
+      opacity: 1; transition: opacity 3s linear; /* for 17–20 s fade */
+    }
+
+    /* Stage-1 button centering */
+    .stage1-wrap .button-bar { text-align: center; }
+
+    /* Post-stimulus "Begin drawing" layout: nothing else on screen */
+    .post-wrap {
+      min-height: 60vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+  </style>
+</head>
+<body data-page="image-stim-practice" data-practice="p1">
+  <div class="page">
+    <div class="content">
+      <div class="inner" id="root">
+        <!-- Filled by image-stim-practice.js -->
+      </div>
+    </div>
+
+    <!-- Footer: hidden in experiment mode; shown in dev (via util.js helpers) -->
+    <div class="footer">
+      <div class="button-bar">
+        <button id="backBtn" class="secondary">Back</button>
+        <button id="nextBtn" class="primary">Next</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
