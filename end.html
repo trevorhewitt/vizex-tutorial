@@ -13,64 +13,61 @@
     .page { max-width: 900px; margin: 0 auto; padding: 24px; }
     .wait-wrap { margin-top:16px; }
 
-    /* Remove the old footer/nav entirely (no Next/Back) */
-
     html, body {
-      -webkit-tap-highlight-color: transparent;
-      -webkit-touch-callout: none;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: manipulation;
       margin: 0;
       height: 100%;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
     }
 
-    /* Blank admin buttons bar */
-    .secret-bar {
+    /* ===== Secret buttons at the TOP (visible but innocuous) ===== */
+    .secret-topbar {
       position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      top: 0;
+      left: 0; right: 0;
       padding:
-        10px
+        calc(8px + env(safe-area-inset-top, 0))
         calc(10px + env(safe-area-inset-right, 0))
-        calc(10px + env(safe-area-inset-bottom, 0))
+        8px
         calc(10px + env(safe-area-inset-left, 0));
-      background: transparent; /* no visual “bar” */
+      background: transparent; /* no visible bar */
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       gap: 10px;
       z-index: 9999;
       pointer-events: auto;
     }
-
     .secret-btn {
-      height: 56px;             /* big, finger-friendly */
-      border-radius: 12px;
+      height: 36px;              /* slightly smaller since it's at the top */
+      border-radius: 10px;
       border: 1px solid rgba(0,0,0,0.15);
-      background: rgba(0,0,0,0.06);  /* visible but neutral; no text */
+      background: rgba(0,0,0,0.06); /* faint block, no text */
       outline: none;
-      touch-action: none; /* prevent iOS gestures on the button surface */
-      -webkit-user-select: none;
-      user-select: none;
       display: block;
       width: 100%;
+      user-select: none;
     }
-    .secret-btn:active {
-      filter: brightness(0.95);
-    }
+    .secret-btn:active { filter: brightness(0.95); }
 
-    /* Optional: subtle focus style if keyboard is used during dev */
-    .secret-btn:focus-visible {
-      box-shadow: 0 0 0 3px rgba(0, 128, 255, 0.3);
+    /* Add a little top padding to page so content isn't under buttons */
+    .with-topbar-pad {
+      padding-top: 64px; /* room for the top bar + safe-area */
     }
   </style>
 </head>
 <body data-page="xx-template">
-  <div class="page">
+  <!-- Three visible, unlabeled buttons at the TOP -->
+  <div class="secret-topbar" aria-hidden="true">
+    <!-- LEFT button: RESET immediately (simple navigation) -->
+    <button class="secret-btn" type="button" id="resetBtn" aria-hidden="true"></button>
+    <button class="secret-btn" type="button" aria-hidden="true"></button>
+    <button class="secret-btn" type="button" aria-hidden="true"></button>
+  </div>
+
+  <div class="page with-topbar-pad">
     <div class="content">
       <div class="inner">
-        <h1>You have now completed the practice trials. </h1>
+        <h1>You have now completed the practice trials.</h1>
         <p>Well done</p>
 
         <div class="wait-wrap" style="margin-top:16px;">
@@ -81,119 +78,29 @@
     </div>
   </div>
 
-  <!-- Three visible, unlabeled buttons -->
-  <div class="secret-bar" aria-hidden="true">
-    <button class="secret-btn" type="button" data-key="L" aria-hidden="true"></button>
-    <button class="secret-btn" type="button" data-key="M" aria-hidden="true"></button>
-    <button class="secret-btn" type="button" data-key="R" aria-hidden="true"></button>
-  </div>
-
   <script>
-    // ============================
-    // Secret reset: L, L, R, L, L, M within WINDOW_MS
-    // Single-input-path strategy for iPad:
-    // - Use Pointer Events if available (pointerdown only).
-    // - Else use touchstart, and fall back to click for desktop.
-    // Prevent default on the active path to avoid duplicate streams.
-    // ============================
-    (function initSecretSequence() {
-      const SEQ = ["L","L","R","L","L","M"];
-      const WINDOW_MS = 10000;
+    // Very simple, iPad-friendly reset:
+    // Tap the LEFT top button -> navigate back to the base page (no query params).
+    (function(){
+      const btn = document.getElementById('resetBtn');
 
-      const buttons = Array.from(document.querySelectorAll(".secret-btn"));
-      if (buttons.length !== 3) return;
+      // Compute a sensible "base" URL:
+      function computeBaseUrl() {
+        // If path contains /vizex-tutorial/, go to that directory
+        const { origin, pathname } = location;
+        const match = pathname.match(/^(.*\/vizex-tutorial\/)/);
+        if (match) return origin + match[1];
 
-      // Map order visually: Left, Middle, Right
-      const [leftBtn, middleBtn, rightBtn] = buttons;
-      leftBtn.dataset.key = "L";
-      middleBtn.dataset.key = "M";
-      rightBtn.dataset.key = "R";
-
-      let idx = 0;
-      let timer = null;
-
-      function resetSeq() {
-        idx = 0;
-        if (timer) { clearTimeout(timer); timer = null; }
+        // Otherwise, go to current directory root (strip filename)
+        return origin + pathname.replace(/[^/]*$/, '');
       }
-      function armWindow() {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(resetSeq, WINDOW_MS);
-      }
-      function successReset() {
-        resetSeq();
-        // Go to /vizex-tutorial/ base with NO query params
-        const path = location.pathname;
-        const match = path.match(/^(.*\/vizex-tutorial\/)/);
-        const base = location.origin + (match ? match[1] : path.replace(/[^/]*$/, ""));
+
+      // Keep it as simple as possible: standard click is reliable on iPad.
+      btn.addEventListener('click', function(){
+        const base = computeBaseUrl();
+        // Replace (no back button to return to the current page with params)
         location.replace(base);
-      }
-
-      function handlePress(which) {
-        if (SEQ[idx] === which) {
-          if (idx === 0) armWindow();
-          idx += 1;
-          if (idx >= SEQ.length) {
-            successReset();
-          }
-        } else {
-          // restart; if the current press matches the first step, start at 1
-          resetSeq();
-          if (SEQ[0] === which) {
-            idx = 1;
-            armWindow();
-          }
-        }
-      }
-
-      // One-path event wiring
-      const usePointer = !!window.PointerEvent;
-
-      function onActivate(e) {
-        // Prevent iOS from synthesizing secondary events (click/mouse)
-        // and block double-tap zoom gesture
-        e.preventDefault();
-        e.stopPropagation();
-        const key = e.currentTarget?.dataset?.key;
-        if (!key) return;
-        handlePress(key);
-      }
-
-      const activeOpts = { passive: false };
-
-      buttons.forEach(btn => {
-        if (usePointer) {
-          // Pointer path ONLY
-          btn.addEventListener("pointerdown", onActivate, activeOpts);
-        } else if ("ontouchstart" in window) {
-          // Touch path ONLY (no mouse on iPad)
-          btn.addEventListener("touchstart", onActivate, activeOpts);
-        } else {
-          // Desktop fallback
-          btn.addEventListener("mousedown", onActivate, activeOpts);
-          btn.addEventListener("click", onActivate, activeOpts);
-        }
       });
-
-      // Clean up sequence if the page is resized/orientation-changed
-      window.addEventListener("orientationchange", resetSeq, { passive: true });
-      window.addEventListener("resize", resetSeq, { passive: true });
-    })();
-
-    // ============================
-    // iOS-wide zoom suppression safeguards
-    // ============================
-    document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
-
-    (function preventIOSDoubleTapZoom() {
-      let lastTouchEnd = 0;
-      document.addEventListener("touchend", function (e) {
-        const now = Date.now();
-        if (now - lastTouchEnd <= 350) {
-          e.preventDefault();
-        }
-        lastTouchEnd = now;
-      }, { passive: false });
     })();
   </script>
 </body>
