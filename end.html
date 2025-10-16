@@ -18,6 +18,8 @@
     html, body {
       -webkit-tap-highlight-color: transparent;
       -webkit-touch-callout: none;
+      user-select: none;
+      -webkit-user-select: none;
       touch-action: manipulation;
       margin: 0;
       height: 100%;
@@ -39,6 +41,7 @@
       grid-template-columns: 1fr 1fr 1fr;
       gap: 10px;
       z-index: 9999;
+      pointer-events: auto;
     }
 
     .secret-btn {
@@ -47,6 +50,11 @@
       border: 1px solid rgba(0,0,0,0.15);
       background: rgba(0,0,0,0.06);  /* visible but neutral; no text */
       outline: none;
+      touch-action: none; /* prevent iOS gestures on the button surface */
+      -webkit-user-select: none;
+      user-select: none;
+      display: block;
+      width: 100%;
     }
     .secret-btn:active {
       filter: brightness(0.95);
@@ -75,14 +83,18 @@
 
   <!-- Three visible, unlabeled buttons -->
   <div class="secret-bar" aria-hidden="true">
-    <button class="secret-btn" data-key="L" aria-hidden="true"></button>
-    <button class="secret-btn" data-key="M" aria-hidden="true"></button>
-    <button class="secret-btn" data-key="R" aria-hidden="true"></button>
+    <button class="secret-btn" type="button" data-key="L" aria-hidden="true"></button>
+    <button class="secret-btn" type="button" data-key="M" aria-hidden="true"></button>
+    <button class="secret-btn" type="button" data-key="R" aria-hidden="true"></button>
   </div>
 
   <script>
     // ============================
     // Secret reset: L, L, R, L, L, M within WINDOW_MS
+    // Single-input-path strategy for iPad:
+    // - Use Pointer Events if available (pointerdown only).
+    // - Else use touchstart, and fall back to click for desktop.
+    // Prevent default on the active path to avoid duplicate streams.
     // ============================
     (function initSecretSequence() {
       const SEQ = ["L","L","R","L","L","M"];
@@ -134,23 +146,33 @@
         }
       }
 
-      // Use pointer and touch for iPad reliability
+      // One-path event wiring
+      const usePointer = !!window.PointerEvent;
+
       function onActivate(e) {
-        // Avoid iOS dbl-tap zoom interference on buttons
+        // Prevent iOS from synthesizing secondary events (click/mouse)
+        // and block double-tap zoom gesture
         e.preventDefault();
-        const btn = e.currentTarget;
-        const key = btn?.dataset?.key;
+        e.stopPropagation();
+        const key = e.currentTarget?.dataset?.key;
         if (!key) return;
         handlePress(key);
       }
 
-      const optsActive = { passive: false };
+      const activeOpts = { passive: false };
+
       buttons.forEach(btn => {
-        if (window.PointerEvent) {
-          btn.addEventListener("pointerdown", onActivate, optsActive);
+        if (usePointer) {
+          // Pointer path ONLY
+          btn.addEventListener("pointerdown", onActivate, activeOpts);
+        } else if ("ontouchstart" in window) {
+          // Touch path ONLY (no mouse on iPad)
+          btn.addEventListener("touchstart", onActivate, activeOpts);
+        } else {
+          // Desktop fallback
+          btn.addEventListener("mousedown", onActivate, activeOpts);
+          btn.addEventListener("click", onActivate, activeOpts);
         }
-        btn.addEventListener("touchstart", onActivate, optsActive);
-        btn.addEventListener("mousedown", onActivate, optsActive);
       });
 
       // Clean up sequence if the page is resized/orientation-changed
@@ -159,14 +181,17 @@
     })();
 
     // ============================
-    // (Optional) iOS zoom suppression, just in case
+    // iOS-wide zoom suppression safeguards
     // ============================
     document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
+
     (function preventIOSDoubleTapZoom() {
       let lastTouchEnd = 0;
       document.addEventListener("touchend", function (e) {
         const now = Date.now();
-        if (now - lastTouchEnd <= 350) e.preventDefault();
+        if (now - lastTouchEnd <= 350) {
+          e.preventDefault();
+        }
         lastTouchEnd = now;
       }, { passive: false });
     })();
